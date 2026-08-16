@@ -1,0 +1,762 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+<meta name="theme-color" content="#14171A">
+<link rel="manifest" href="manifest.json">
+<link rel="icon" href="icon-192.png">
+<link rel="apple-touch-icon" href="icon-192.png">
+<title>Délai</title>
+<style>
+  :root{
+    --bg: #14171A;
+    --panel: #1B1F23;
+    --panel-2: #20252A;
+    --text: #F2EFE9;
+    --text-muted: #8B9298;
+    --text-faint: #565C62;
+    --red: #C0533F;
+    --red-glow: rgba(192,83,63,0.35);
+    --amber: #C89A4B;
+    --amber-glow: rgba(200,154,75,0.32);
+    --green: #5F9270;
+    --green-glow: rgba(95,146,112,0.32);
+    --divider: rgba(255,255,255,0.06);
+  }
+  *{ box-sizing:border-box; -webkit-tap-highlight-color: transparent; }
+  html,body{ height:100%; margin:0; overscroll-behavior:none; }
+  body{
+    background:var(--bg);
+    color:var(--text);
+    font-family: -apple-system, "SF Pro Rounded", "SF Pro Text", ui-rounded, "Segoe UI", Roboto, Inter, system-ui, sans-serif;
+    display:flex;
+    justify-content:center;
+    -webkit-user-select:none; user-select:none;
+  }
+  #app{
+    width:100%;
+    max-width:480px;
+    height:100dvh;
+    display:flex;
+    flex-direction:column;
+    position:relative;
+  }
+
+  /* ---------- SECTION 1 : SIGNAL ---------- */
+  #signal{
+    flex:1 1 34%;
+    display:flex;
+    flex-direction:column;
+    align-items:center;
+    justify-content:center;
+    position:relative;
+    transition: background 900ms ease;
+    padding: 20px 20px 8px;
+    min-height:0;
+  }
+  #signal.state-red{ background: radial-gradient(circle at 50% 40%, var(--red-glow), transparent 70%); }
+  #signal.state-amber{ background: radial-gradient(circle at 50% 40%, var(--amber-glow), transparent 70%); }
+  #signal.state-green{ background: radial-gradient(circle at 50% 40%, var(--green-glow), transparent 70%); }
+
+  .ring-wrap{ position:relative; width:min(46vw, 210px); height:min(46vw,210px); }
+  .ring-wrap svg{ width:100%; height:100%; transform:rotate(-90deg); }
+  .ring-bg{ fill:none; stroke:rgba(255,255,255,0.08); stroke-width:8; }
+  .ring-fg{ fill:none; stroke-width:8; stroke-linecap:round; transition: stroke-dashoffset 900ms ease, stroke 600ms ease; }
+  .ring-fg.state-red{ stroke:var(--red); }
+  .ring-fg.state-amber{ stroke:var(--amber); }
+  .ring-fg.state-green{ stroke:var(--green); }
+
+  .ring-center{
+    position:absolute; inset:0;
+    display:flex; flex-direction:column; align-items:center; justify-content:center;
+    text-align:center;
+  }
+  .ring-timer{ font-size:1.9rem; font-weight:650; font-variant-numeric: tabular-nums; letter-spacing:0.5px; }
+  .ring-sub{ font-size:0.68rem; color:var(--text-muted); margin-top:2px; text-transform:uppercase; letter-spacing:1px; }
+
+  .status-label{ margin-top:14px; font-size:1.05rem; font-weight:600; text-align:center; }
+  .status-label.state-red{ color:var(--red); }
+  .status-label.state-amber{ color:var(--amber); }
+  .status-label.state-green{ color:var(--green); }
+  .status-detail{ margin-top:3px; font-size:0.78rem; color:var(--text-muted); text-align:center; max-width:280px; }
+
+  /* ---------- SECTION 2 : BOUTON ---------- */
+  #action{
+    flex:1 1 22%;
+    display:flex;
+    flex-direction:column;
+    align-items:center;
+    justify-content:center;
+    border-top:1px solid var(--divider);
+    border-bottom:1px solid var(--divider);
+    min-height:0;
+    gap:8px;
+  }
+  #smoke-btn{
+    width:min(30vw,132px); height:min(30vw,132px);
+    border-radius:50%;
+    border:none;
+    background: linear-gradient(145deg,#2A2F35,#1B1F23);
+    box-shadow: 0 6px 18px rgba(0,0,0,0.35), inset 0 1px 0 rgba(255,255,255,0.05);
+    color:var(--text);
+    font-size:0.92rem;
+    font-weight:700;
+    letter-spacing:0.3px;
+    display:flex; align-items:center; justify-content:center;
+    transition: transform 120ms ease, box-shadow 120ms ease;
+  }
+  #smoke-btn:active{ transform:scale(0.93); box-shadow: 0 2px 8px rgba(0,0,0,0.35), inset 0 1px 0 rgba(255,255,255,0.05); }
+  #last-info{ font-size:0.74rem; color:var(--text-muted); text-align:center; }
+  #undo-link{ font-size:0.72rem; color:var(--text-faint); text-decoration:underline; padding:4px 8px; }
+
+  /* ---------- SECTION 3 : STATS ---------- */
+  #stats{
+    flex:1 1 44%;
+    padding:16px 20px calc(16px + env(safe-area-inset-bottom));
+    display:flex;
+    flex-direction:column;
+    gap:10px;
+    min-height:0;
+    overflow-y:auto;
+  }
+  .stats-grid{
+    display:grid;
+    grid-template-columns: 1fr 1fr;
+    gap:8px;
+  }
+  .stat-box{
+    background:var(--panel);
+    border-radius:14px;
+    padding:10px 12px;
+  }
+  .stat-value{ font-size:1.25rem; font-weight:700; font-variant-numeric: tabular-nums; }
+  .stat-label{ font-size:0.66rem; color:var(--text-muted); text-transform:uppercase; letter-spacing:0.6px; margin-top:1px; }
+
+  .objective-box{ background:var(--panel); border-radius:14px; padding:12px 14px; }
+  .objective-head{ display:flex; justify-content:space-between; align-items:baseline; }
+  .objective-title{ font-size:0.72rem; color:var(--text-muted); text-transform:uppercase; letter-spacing:0.6px; }
+  .objective-edit{ font-size:0.68rem; color:var(--text-faint); text-decoration:underline; }
+  .progress-track{ margin-top:9px; height:8px; border-radius:6px; background:var(--panel-2); position:relative; overflow:visible; }
+  .progress-fill{ height:100%; border-radius:6px; background:linear-gradient(90deg,var(--red),var(--amber),var(--green)); transition: width 700ms ease; }
+  .progress-marker{ position:absolute; top:50%; width:14px; height:14px; border-radius:50%; background:var(--text); border:2px solid var(--bg); transform:translate(-50%,-50%); transition:left 700ms ease; box-shadow:0 1px 4px rgba(0,0,0,0.4); }
+  .objective-foot{ display:flex; justify-content:space-between; margin-top:8px; font-size:0.72rem; color:var(--text-muted); }
+  .eta-value{ color:var(--text); font-weight:600; }
+  .avg-line{ margin-top:6px; font-size:0.66rem; color:var(--text-faint); text-align:center; }
+
+  #gear{
+    position:absolute; top:calc(10px + env(safe-area-inset-top)); right:14px;
+    width:34px; height:34px; border-radius:50%;
+    background:rgba(255,255,255,0.06);
+    display:flex; align-items:center; justify-content:center;
+    font-size:1.05rem; color:var(--text-muted); z-index:5;
+  }
+  #health-btn{
+    position:absolute; top:calc(10px + env(safe-area-inset-top)); left:14px;
+    width:34px; height:34px; border-radius:50%;
+    background:rgba(255,255,255,0.06);
+    display:flex; align-items:center; justify-content:center;
+    font-size:1.05rem; z-index:5;
+  }
+  #install-banner{
+    display:none;
+    position:absolute; left:14px; right:14px; bottom:calc(12px + env(safe-area-inset-bottom));
+    background:var(--panel); border:1px solid rgba(255,255,255,0.1);
+    border-radius:14px; padding:12px 14px;
+    align-items:center; justify-content:space-between; gap:10px;
+    z-index:15; box-shadow:0 8px 24px rgba(0,0,0,0.4);
+  }
+  #install-banner.show{ display:flex; }
+  #install-banner span{ font-size:0.8rem; color:var(--text); }
+  #install-btn{ background:var(--text); color:var(--bg); border:none; border-radius:10px; padding:8px 14px; font-size:0.8rem; font-weight:700; white-space:nowrap; }
+  .milestone-row{ display:flex; gap:10px; align-items:flex-start; padding:9px 0; border-bottom:1px solid var(--divider); }
+  .milestone-row:last-child{ border-bottom:none; }
+  .milestone-check{ flex:0 0 20px; width:20px; height:20px; border-radius:50%; display:flex; align-items:center; justify-content:center; font-size:0.68rem; margin-top:1px; }
+  .milestone-check.done{ background:var(--green); color:#0c130e; }
+  .milestone-check.pending{ background:var(--panel-2); color:var(--text-faint); border:1px solid var(--divider); }
+  .milestone-text{ flex:1; font-size:0.8rem; line-height:1.35; }
+  .milestone-time{ font-size:0.68rem; color:var(--text-muted); margin-top:2px; }
+  .source-note{ font-size:0.64rem; color:var(--text-faint); margin-top:8px; line-height:1.5; }
+  .health-stat{ background:var(--panel-2); border-radius:12px; padding:10px 12px; font-size:0.8rem; }
+  .health-stat b{ font-variant-numeric: tabular-nums; }
+
+  /* ---------- MODAL ---------- */
+  #overlay{ position:fixed; inset:0; background:rgba(0,0,0,0.55); display:none; align-items:flex-end; justify-content:center; z-index:20; }
+  #overlay.open{ display:flex; }
+  #sheet{
+    width:100%; max-width:480px; background:var(--panel); border-radius:20px 20px 0 0;
+    padding:18px 20px calc(20px + env(safe-area-inset-bottom));
+    display:flex; flex-direction:column; gap:14px;
+  }
+  #sheet h3{ margin:0; font-size:1rem; }
+  #sheet label{ font-size:0.75rem; color:var(--text-muted); }
+  .field-row{ display:flex; align-items:center; gap:10px; background:var(--panel-2); border-radius:12px; padding:6px 10px; }
+  .field-row input[type=number]{
+    flex:1; background:transparent; border:none; color:var(--text); font-size:1.05rem; font-weight:600; padding:8px 0; font-variant-numeric: tabular-nums;
+  }
+  .field-row input:focus{ outline:none; }
+  .presets{ display:flex; gap:8px; }
+  .preset-btn{ flex:1; padding:8px 0; border-radius:10px; background:var(--panel-2); border:1px solid transparent; color:var(--text-muted); font-size:0.78rem; text-align:center; }
+  .preset-btn.active{ border-color:var(--green); color:var(--green); }
+  .sheet-btn{ padding:12px; border-radius:12px; border:none; font-size:0.9rem; font-weight:600; text-align:center; }
+  .sheet-btn.primary{ background:var(--text); color:var(--bg); }
+  .sheet-btn.ghost{ background:transparent; color:var(--text-muted); }
+  .sheet-btn.danger{ background:transparent; color:var(--red); }
+  #close-sheet{ align-self:center; width:36px; height:4px; border-radius:3px; background:var(--text-faint); margin-bottom:2px; }
+  .info-line{ font-size:0.74rem; color:var(--text-muted); line-height:1.5; }
+  .swatch{ display:inline-block; width:8px; height:8px; border-radius:50%; margin-right:5px; }
+</style>
+</head>
+<body>
+<div id="app">
+
+  <div id="gear">⚙</div>
+  <div id="health-btn">🫀</div>
+
+  <div id="signal" class="state-green">
+    <div class="ring-wrap">
+      <svg viewBox="0 0 100 100">
+        <circle class="ring-bg" cx="50" cy="50" r="44"></circle>
+        <circle id="ring-fg" class="ring-fg state-green" cx="50" cy="50" r="44"
+          stroke-dasharray="276.5" stroke-dashoffset="276.5"></circle>
+      </svg>
+      <div class="ring-center">
+        <div class="ring-timer" id="ring-timer">--:--</div>
+        <div class="ring-sub" id="ring-sub">depuis la dernière</div>
+      </div>
+    </div>
+    <div class="status-label state-green" id="status-label">C'est parti</div>
+    <div class="status-detail" id="status-detail">Enregistrez votre première cigarette pour démarrer le programme.</div>
+  </div>
+
+  <div id="action">
+    <button id="smoke-btn">JE FUME<br>🚬</button>
+    <div id="last-info">Aucune cigarette enregistrée</div>
+    <div id="undo-link">Annuler la dernière</div>
+  </div>
+
+  <div id="stats">
+    <div class="stats-grid">
+      <div class="stat-box"><div class="stat-value" id="stat-day">—</div><div class="stat-label">Jour du programme</div></div>
+      <div class="stat-box"><div class="stat-value" id="stat-target">—</div><div class="stat-label">Délai exigé aujourd'hui</div></div>
+      <div class="stat-box"><div class="stat-value" id="stat-count">0</div><div class="stat-label">Cigarettes aujourd'hui</div></div>
+      <div class="stat-box"><div class="stat-value" id="stat-record">—</div><div class="stat-label">Record du jour</div></div>
+    </div>
+
+    <div class="objective-box">
+      <div class="objective-head">
+        <span class="objective-title">Objectif : <span id="objective-value">24 h</span> sans cigarette</span>
+        <span class="objective-edit" id="edit-objective">modifier</span>
+      </div>
+      <div class="progress-track">
+        <div class="progress-fill" id="progress-fill" style="width:0%"></div>
+        <div class="progress-marker" id="progress-marker" style="left:0%"></div>
+      </div>
+      <div class="objective-foot">
+        <span>Progression : <span id="progress-pct">0%</span></span>
+        <span>Échéance : <span class="eta-value" id="eta-date">à déterminer</span></span>
+      </div>
+      <div class="avg-line" id="avg-consumption">Moyenne : — /24h · — /jour (7j)</div>
+    </div>
+  </div>
+</div>
+
+<div id="overlay">
+  <div id="sheet">
+    <div id="close-sheet"></div>
+    <h3 id="sheet-title">Réglages</h3>
+    <div id="sheet-body"></div>
+  </div>
+</div>
+
+<div id="install-banner">
+  <span>Installer l'app sur l'écran d'accueil ?</span>
+  <button id="install-btn">Installer</button>
+</div>
+
+<script>
+(function(){
+  const STORAGE_KEY = 'nic-tracker-state-v1';
+  const MIN_MS = 60000;
+  let state = null;
+  let tickTimer = null;
+
+  // ---------- Storage (localStorage : la page tourne en autonome dans le navigateur du téléphone) ----------
+  async function loadState(){
+    try{
+      const raw = localStorage.getItem(STORAGE_KEY);
+      if(raw){
+        const parsed = JSON.parse(raw);
+        if(typeof parsed.initialTargetMinutes !== 'number') parsed.initialTargetMinutes = 9;
+        if(typeof parsed.objectiveMinutes !== 'number') parsed.objectiveMinutes = 1440;
+        else if(parsed.objectiveMinutes === 120) parsed.objectiveMinutes = 1440; // ancien défaut -> nouveau défaut (0 cig/24h)
+        if(typeof parsed.baselineDailyCigs !== 'number') parsed.baselineDailyCigs = null;
+        return parsed;
+      }
+    }catch(e){ console.error('Erreur de lecture', e); }
+    return null;
+  }
+  async function saveState(){
+    try{ localStorage.setItem(STORAGE_KEY, JSON.stringify(state)); }
+    catch(e){ console.error('Erreur de sauvegarde', e); }
+  }
+  function defaultState(){
+    return {
+      startDate: todayISO(),
+      objectiveMinutes: 1440,       // 24h = 0 cigarette sur une journée
+      initialTargetMinutes: 9,      // délai du jour 1, paramétrable (utile en cas de rechute)
+      baselineDailyCigs: null,      // consommation habituelle avant le programme (optionnel, pour "cigarettes évitées")
+      cigarettes: [] // array of ISO timestamps, ascending
+    };
+  }
+  function todayISO(d){
+    const dt = d ? new Date(d) : new Date();
+    const y = dt.getFullYear(), m = String(dt.getMonth()+1).padStart(2,'0'), day = String(dt.getDate()).padStart(2,'0');
+    return `${y}-${m}-${day}`;
+  }
+  function dateOfDayIndex(startISO, dayIndex){
+    // dayIndex 1 -> startISO itself
+    const d = new Date(startISO+'T00:00:00');
+    d.setDate(d.getDate() + (dayIndex-1));
+    return todayISO(d);
+  }
+  function dayIndexOf(startISO, dateISO){
+    const a = new Date(startISO+'T00:00:00');
+    const b = new Date(dateISO+'T00:00:00');
+    return Math.round((b-a)/86400000) + 1;
+  }
+  function cigsOnDate(dateISO){
+    return state.cigarettes
+      .map(t=>new Date(t))
+      .filter(d=>todayISO(d)===dateISO)
+      .sort((a,b)=>a-b);
+  }
+
+  // ---------- Core logic: target minutes per day ----------
+  function computeTargets(todayDayIndex){
+    const T = {1: state.initialTargetMinutes};
+    for(let d=2; d<=todayDayIndex; d++){
+      const prevDate = dateOfDayIndex(state.startDate, d-1);
+      const cigs = cigsOnDate(prevDate);
+      let minIntervalMin = null;
+      for(let i=1;i<cigs.length;i++){
+        const gapMin = (cigs[i]-cigs[i-1])/MIN_MS;
+        if(minIntervalMin===null || gapMin<minIntervalMin) minIntervalMin = gapMin;
+      }
+      if(minIntervalMin===null || minIntervalMin >= T[d-1]){
+        T[d] = T[d-1] + 1;
+      } else {
+        T[d] = T[d-1];
+      }
+    }
+    return T;
+  }
+
+  function fmtMinutes(mins){
+    mins = Math.round(mins);
+    if(mins < 60) return `${mins} min`;
+    const h = Math.floor(mins/60), m = mins%60;
+    return m===0 ? `${h} h` : `${h} h ${m} min`;
+  }
+  function fmtClock(ms){
+    if(ms < 0) ms = 0;
+    const totalSec = Math.floor(ms/1000);
+    const h = Math.floor(totalSec/3600);
+    const m = Math.floor((totalSec%3600)/60);
+    const s = totalSec%60;
+    if(h>0) return `${h}:${String(m).padStart(2,'0')}:${String(s).padStart(2,'0')}`;
+    return `${String(m).padStart(2,'0')}:${String(s).padStart(2,'0')}`;
+  }
+
+  // ---------- Render ----------
+  function render(){
+    const today = todayISO();
+    const dayIndex = Math.max(1, dayIndexOf(state.startDate, today));
+    const T = computeTargets(dayIndex);
+    const targetMin = T[dayIndex];
+    const floorMin = dayIndex>1 ? T[dayIndex-1] : T[1];
+
+    const sortedCigs = [...state.cigarettes].map(t=>new Date(t)).sort((a,b)=>a-b);
+    const last = sortedCigs.length ? sortedCigs[sortedCigs.length-1] : null;
+    const now = new Date();
+    const elapsedMs = last ? (now-last) : null;
+    const elapsedMin = elapsedMs!==null ? elapsedMs/MIN_MS : null;
+
+    let colorState = 'green';
+    let statusLabel = 'Vous pouvez fumer';
+    let statusDetail = `Le délai du jour (${fmtMinutes(targetMin)}) est atteint.`;
+
+    if(elapsedMin===null){
+      colorState = 'green';
+      statusLabel = 'C\'est parti';
+      statusDetail = 'Enregistrez votre première cigarette pour démarrer le programme.';
+    } else if(elapsedMin < floorMin){
+      colorState = 'red';
+      statusLabel = 'Pas encore';
+      statusDetail = dayIndex===1
+        ? `Attendez ${fmtMinutes(targetMin)} avant la prochaine.`
+        : `En dessous du délai d'hier (${fmtMinutes(floorMin)}). Patientez encore.`;
+    } else if(elapsedMin < targetMin){
+      colorState = 'amber';
+      statusLabel = 'Vous pouvez, mais...';
+      statusDetail = `Objectif du jour : ${fmtMinutes(targetMin)}. Tenir un peu plus fait progresser le programme.`;
+    } else {
+      colorState = 'green';
+      statusLabel = 'Vous pouvez fumer';
+      statusDetail = `Délai du jour (${fmtMinutes(targetMin)}) atteint. Bravo.`;
+    }
+
+    // signal panel
+    const signalEl = document.getElementById('signal');
+    signalEl.className = 'state-'+colorState;
+    document.getElementById('status-label').className = 'status-label state-'+colorState;
+    document.getElementById('status-label').textContent = statusLabel;
+    document.getElementById('status-detail').textContent = statusDetail;
+
+    // ring
+    const ring = document.getElementById('ring-fg');
+    ring.className = 'ring-fg state-'+colorState;
+    const circumference = 276.5;
+    let frac = 0;
+    if(elapsedMin!==null){
+      const refTarget = colorState==='red' ? floorMin : targetMin;
+      frac = refTarget>0 ? Math.min(1, elapsedMin/refTarget) : 1;
+    }
+    ring.setAttribute('stroke-dashoffset', String(circumference*(1-frac)));
+
+    const ringTimer = document.getElementById('ring-timer');
+    const ringSub = document.getElementById('ring-sub');
+    if(elapsedMs===null){
+      ringTimer.textContent = '--:--';
+      ringSub.textContent = 'aucune donnée';
+    } else if(colorState==='green'){
+      ringTimer.textContent = fmtClock(elapsedMs);
+      ringSub.textContent = 'écoulé';
+    } else {
+      const refTarget = colorState==='red' ? floorMin : targetMin;
+      const remainMs = Math.max(0, refTarget*MIN_MS - elapsedMs);
+      ringTimer.textContent = fmtClock(remainMs);
+      ringSub.textContent = 'restant';
+    }
+
+    // action section
+    document.getElementById('last-info').textContent = last
+      ? `Dernière cigarette à ${last.toLocaleTimeString('fr-FR',{hour:'2-digit',minute:'2-digit'})}`
+      : 'Aucune cigarette enregistrée';
+
+    // stats
+    document.getElementById('stat-day').textContent = 'Jour '+dayIndex;
+    document.getElementById('stat-target').textContent = fmtMinutes(targetMin);
+    const todaysCigs = cigsOnDate(today);
+    document.getElementById('stat-count').textContent = String(todaysCigs.length);
+    let record = null;
+    for(let i=1;i<todaysCigs.length;i++){
+      const gap = (todaysCigs[i]-todaysCigs[i-1])/MIN_MS;
+      if(record===null || gap>record) record = gap;
+    }
+    document.getElementById('stat-record').textContent = record===null ? '—' : fmtMinutes(record);
+
+    // objective
+    const obj = state.objectiveMinutes;
+    document.getElementById('objective-value').textContent = fmtMinutes(obj);
+    const pct = Math.max(0, Math.min(100, (targetMin/obj)*100));
+    document.getElementById('progress-fill').style.width = pct+'%';
+    document.getElementById('progress-marker').style.left = pct+'%';
+    document.getElementById('progress-pct').textContent = Math.round(pct)+'%';
+
+    let etaText = 'à déterminer';
+    if(dayIndex>1 && targetMin<obj){
+      const rate = (targetMin - T[1]) / (dayIndex-1); // minutes gained per day on average
+      if(rate>0){
+        const remaining = obj - targetMin;
+        const daysNeeded = Math.ceil(remaining/rate);
+        const eta = new Date();
+        eta.setDate(eta.getDate()+daysNeeded);
+        etaText = eta.toLocaleDateString('fr-FR',{day:'numeric',month:'short',year:'numeric'});
+      } else {
+        etaText = 'reprenez le rythme';
+      }
+    } else if(targetMin>=obj){
+      etaText = 'objectif atteint 🎉';
+    }
+    document.getElementById('eta-date').textContent = etaText;
+
+    // moyenne de consommation (24h glissantes / 7 derniers jours)
+    const nowMs = now.getTime();
+    const count24h = sortedCigs.filter(d => nowMs - d.getTime() <= 24*60*MIN_MS).length;
+    const count7d = sortedCigs.filter(d => nowMs - d.getTime() <= 7*24*60*MIN_MS).length;
+    const daysForAvg = Math.min(7, dayIndex);
+    const avg7d = daysForAvg>0 ? (count7d/daysForAvg) : 0;
+    document.getElementById('avg-consumption').textContent =
+      `Moyenne : ${count24h} /24h · ${avg7d.toFixed(1)} /jour (${daysForAvg}j)`;
+  }
+
+  // ---------- Events ----------
+  document.getElementById('smoke-btn').addEventListener('click', async ()=>{
+    state.cigarettes.push(new Date().toISOString());
+    await saveState();
+    render();
+  });
+
+  document.getElementById('undo-link').addEventListener('click', async ()=>{
+    if(!state.cigarettes.length) return;
+    const sorted = [...state.cigarettes].sort();
+    const lastTs = sorted[sorted.length-1];
+    const idx = state.cigarettes.indexOf(lastTs);
+    if(idx>-1){
+      state.cigarettes.splice(idx,1);
+      await saveState();
+      render();
+    }
+  });
+
+  document.getElementById('gear').addEventListener('click', openSettings);
+  document.getElementById('edit-objective').addEventListener('click', openSettings);
+  document.getElementById('health-btn').addEventListener('click', openHealth);
+  document.getElementById('overlay').addEventListener('click', (e)=>{
+    if(e.target.id==='overlay') closeSheet();
+  });
+
+  function fmtDurationLong(ms){
+    if(ms <= 0) return '0 min';
+    const mins = Math.floor(ms/MIN_MS);
+    if(mins < 60) return `${mins} min`;
+    const hours = Math.floor(mins/60);
+    if(hours < 24) return (mins%60===0) ? `${hours} h` : `${hours} h ${mins%60} min`;
+    const days = Math.floor(hours/24);
+    if(days < 30) return (hours%24===0) ? `${days} j` : `${days} j ${hours%24} h`;
+    const months = Math.floor(days/30);
+    if(months < 12) return `${months} mois`;
+    const years = Math.floor(days/365);
+    const remMonths = Math.floor((days%365)/30);
+    return remMonths>0 ? `${years} an${years>1?'s':''} ${remMonths} mois` : `${years} an${years>1?'s':''}`;
+  }
+
+  const HOUR_MS = 60*MIN_MS, DAY_MS = 24*HOUR_MS, WEEK_MS = 7*DAY_MS, MONTH_MS = 30*DAY_MS, YEAR_MS = 365*DAY_MS;
+  const HEALTH_MILESTONES = [
+    { ms: 20*MIN_MS,        text: "Fréquence cardiaque et tension artérielle redescendent" },
+    { ms: 12*HOUR_MS,       text: "Taux de monoxyde de carbone dans le sang revenu à la normale" },
+    { ms: 2*DAY_MS,         text: "Odorat et goût nettement améliorés ; risque d'infarctus en baisse" },
+    { ms: 2*WEEK_MS,        text: "Circulation sanguine et fonction pulmonaire en hausse (palier 2 sem. – 3 mois)" },
+    { ms: 1*MONTH_MS,       text: "Toux et essoufflement diminuent (palier 1 – 9 mois)" },
+    { ms: 1*YEAR_MS,        text: "Risque de maladie coronarienne réduit d'environ moitié" },
+    { ms: 5*YEAR_MS,        text: "Risque d'AVC ramené à celui d'un non-fumeur (palier 5 – 15 ans)" },
+    { ms: 10*YEAR_MS,       text: "Risque de décès par cancer du poumon réduit d'environ moitié" },
+    { ms: 15*YEAR_MS,       text: "Risque de maladie coronarienne équivalent à celui d'un non-fumeur" }
+  ];
+
+  let currentSheet = null; // 'settings' | 'health' | null
+
+  function buildHealthBody(){
+    const sortedCigs = [...state.cigarettes].map(t=>new Date(t)).sort((a,b)=>a-b);
+    const last = sortedCigs.length ? sortedCigs[sortedCigs.length-1] : null;
+    const elapsedMs = last ? (new Date() - last) : 0;
+
+    const today = todayISO();
+    const dayIndex = Math.max(1, dayIndexOf(state.startDate, today));
+    let avoidedLine = '';
+    if(state.baselineDailyCigs){
+      const estimatedBaselineTotal = state.baselineDailyCigs * dayIndex;
+      const avoided = Math.max(0, Math.round(estimatedBaselineTotal - state.cigarettes.length));
+      avoidedLine = `<div class="health-stat">Cigarettes évitées (estimation vs. ${state.baselineDailyCigs}/jour) : <b>${avoided}</b></div>`;
+    } else {
+      avoidedLine = `<div class="health-stat" style="color:var(--text-muted)">Renseignez votre consommation habituelle dans les réglages (⚙) pour estimer les cigarettes évitées.</div>`;
+    }
+
+    const rows = HEALTH_MILESTONES.map(m=>{
+      const done = elapsedMs >= m.ms;
+      return `<div class="milestone-row">
+        <div class="milestone-check ${done?'done':'pending'}">${done?'✓':''}</div>
+        <div class="milestone-text">${m.text}
+          <div class="milestone-time">${done ? 'Atteint' : 'dans ' + fmtDurationLong(m.ms - elapsedMs)}</div>
+        </div>
+      </div>`;
+    }).join('');
+
+    return `
+      <div class="info-line">Basé sur la durée <b>continue</b> sans cigarette (${last ? fmtDurationLong(elapsedMs) : 'aucune donnée'}). Ces paliers concernent la population générale en cas d'arrêt complet et durable — ce ne sont pas des valeurs personnalisées. Pour un avis adapté à votre situation, parlez-en à un médecin ou à un tabacologue.</div>
+      ${avoidedLine}
+      <div>${rows}</div>
+      <div class="source-note">Sources : CDC (Health Benefits of Smoking Cessation, DHHS Pub. No. 90-8416) et OMS (Tobacco: Health benefits of smoking cessation, 2020).</div>
+      <button class="sheet-btn ghost" id="close-health">Fermer</button>
+    `;
+  }
+
+  function openHealth(){
+    currentSheet = 'health';
+    const body = document.getElementById('sheet-body');
+    document.getElementById('sheet-title').textContent = 'Bénéfices santé';
+    body.innerHTML = buildHealthBody();
+    document.getElementById('close-health').addEventListener('click', closeSheet);
+    openSheet();
+  }
+
+  function refreshHealthBodyLive(){
+    const body = document.getElementById('sheet-body');
+    const scrollPos = document.getElementById('sheet').scrollTop;
+    body.innerHTML = buildHealthBody();
+    document.getElementById('close-health').addEventListener('click', closeSheet);
+    document.getElementById('sheet').scrollTop = scrollPos;
+  }
+
+  function openSheet(){ document.getElementById('overlay').classList.add('open'); }
+  function closeSheet(){ document.getElementById('overlay').classList.remove('open'); currentSheet = null; }
+
+  function openSettings(){
+    const body = document.getElementById('sheet-body');
+    document.getElementById('sheet-title').textContent = 'Réglages';
+    body.innerHTML = `
+      <label>Délai initial (jour 1, en minutes)</label>
+      <div class="field-row">
+        <input type="number" id="initial-input" min="1" step="1" value="${state.initialTargetMinutes}">
+        <span style="color:var(--text-muted);font-size:0.85rem;">min</span>
+      </div>
+      <div class="info-line">À modifier notamment si vous recommencez le programme après une rechute (un délai de départ plus élevé peut alors être plus réaliste).</div>
+
+      <label>Objectif final (délai visé entre deux cigarettes)</label>
+      <div class="field-row">
+        <input type="number" id="obj-input" min="10" step="1" value="${state.objectiveMinutes}">
+        <span style="color:var(--text-muted);font-size:0.85rem;">min</span>
+      </div>
+      <div class="presets">
+        <div class="preset-btn" data-v="720">12 h</div>
+        <div class="preset-btn" data-v="1440">24 h</div>
+        <div class="preset-btn" data-v="2880">48 h</div>
+      </div>
+      <div class="info-line">Un délai visé de 1440 min (24 h) équivaut à 0 cigarette sur une journée entière.</div>
+
+      <label>Consommation habituelle avant le programme (optionnel)</label>
+      <div class="field-row">
+        <input type="number" id="baseline-input" min="1" step="1" placeholder="ex. 20" value="${state.baselineDailyCigs || ''}">
+        <span style="color:var(--text-muted);font-size:0.85rem;">cig/jour</span>
+      </div>
+      <div class="info-line">Sert uniquement à estimer les cigarettes évitées dans l'onglet Santé (🫀). Laisser vide si inconnu.</div>
+
+      <div class="info-line">
+        <span class="swatch" style="background:var(--red)"></span>Rouge : sous le délai d'hier &nbsp;
+        <span class="swatch" style="background:var(--amber)"></span>Orange : entre hier et aujourd'hui &nbsp;
+        <span class="swatch" style="background:var(--green)"></span>Vert : délai du jour atteint
+      </div>
+      <button class="sheet-btn primary" id="save-settings">Enregistrer</button>
+
+      <label>Sauvegarde / transfert des données</label>
+      <div class="info-line">Pour migrer ton historique depuis l'ancienne version locale : ouvre-la, copie le texte via "Exporter", reviens ici et colle-le via "Importer".</div>
+      <button class="sheet-btn ghost" id="export-data">Exporter mes données</button>
+      <textarea id="export-output" readonly style="display:none;width:100%;min-height:70px;background:var(--panel-2);color:var(--text);border:none;border-radius:10px;padding:8px;font-size:0.7rem;"></textarea>
+      <textarea id="import-input" placeholder="Colle ici les données exportées" style="width:100%;min-height:70px;background:var(--panel-2);color:var(--text);border:none;border-radius:10px;padding:8px;font-size:0.7rem;"></textarea>
+      <button class="sheet-btn ghost" id="import-data">Importer ces données</button>
+
+      <button class="sheet-btn danger" id="reset-program">Réinitialiser le programme</button>
+      <button class="sheet-btn ghost" id="cancel-settings">Fermer</button>
+    `;
+    body.querySelectorAll('.preset-btn').forEach(b=>{
+      b.addEventListener('click', ()=>{ document.getElementById('obj-input').value = b.dataset.v; });
+    });
+    document.getElementById('save-settings').addEventListener('click', async ()=>{
+      const v = parseInt(document.getElementById('obj-input').value, 10);
+      const initV = parseInt(document.getElementById('initial-input').value, 10);
+      const baseV = parseInt(document.getElementById('baseline-input').value, 10);
+      if(v && v>=10){ state.objectiveMinutes = v; }
+      if(initV && initV>=1){ state.initialTargetMinutes = initV; }
+      state.baselineDailyCigs = (baseV && baseV>=1) ? baseV : null;
+      await saveState(); render();
+      closeSheet();
+    });
+    document.getElementById('cancel-settings').addEventListener('click', closeSheet);
+    document.getElementById('reset-program').addEventListener('click', ()=>{
+      confirmReset();
+    });
+    document.getElementById('export-data').addEventListener('click', ()=>{
+      const out = document.getElementById('export-output');
+      out.value = JSON.stringify(state);
+      out.style.display = 'block';
+      out.focus();
+      out.select();
+      try{ document.execCommand('copy'); document.getElementById('export-data').textContent = 'Copié ✓ (ou sélectionne le texte ci-dessous)'; }
+      catch(e){ document.getElementById('export-data').textContent = 'Sélectionne et copie le texte ci-dessous'; }
+    });
+    document.getElementById('import-data').addEventListener('click', async ()=>{
+      const raw = document.getElementById('import-input').value.trim();
+      if(!raw) return;
+      try{
+        const parsed = JSON.parse(raw);
+        if(!Array.isArray(parsed.cigarettes)) throw new Error('format invalide');
+        state = {
+          startDate: parsed.startDate || todayISO(),
+          objectiveMinutes: typeof parsed.objectiveMinutes==='number' ? parsed.objectiveMinutes : 1440,
+          initialTargetMinutes: typeof parsed.initialTargetMinutes==='number' ? parsed.initialTargetMinutes : 9,
+          baselineDailyCigs: typeof parsed.baselineDailyCigs==='number' ? parsed.baselineDailyCigs : null,
+          cigarettes: parsed.cigarettes
+        };
+        await saveState();
+        render();
+        closeSheet();
+      }catch(e){
+        document.getElementById('import-data').textContent = 'Données invalides, réessaie';
+      }
+    });
+    openSheet();
+  }
+
+  function confirmReset(){
+    const body = document.getElementById('sheet-body');
+    document.getElementById('sheet-title').textContent = 'Confirmer la réinitialisation';
+    body.innerHTML = `
+      <div class="info-line">Toutes les cigarettes enregistrées seront effacées et le programme repartira au Jour 1. Cette action est irréversible.</div>
+      <button class="sheet-btn danger" id="confirm-reset-yes">Oui, réinitialiser</button>
+      <button class="sheet-btn ghost" id="confirm-reset-no">Annuler</button>
+    `;
+    document.getElementById('confirm-reset-yes').addEventListener('click', async ()=>{
+      state = {
+        startDate: todayISO(),
+        objectiveMinutes: state.objectiveMinutes,
+        initialTargetMinutes: state.initialTargetMinutes,
+        baselineDailyCigs: state.baselineDailyCigs,
+        cigarettes: []
+      };
+      await saveState();
+      render();
+      closeSheet();
+    });
+    document.getElementById('confirm-reset-no').addEventListener('click', closeSheet);
+  }
+
+  // ---------- Init ----------
+  (async function init(){
+    state = await loadState();
+    if(!state) { state = defaultState(); await saveState(); }
+    render();
+    tickTimer = setInterval(()=>{
+      render();
+      if(currentSheet === 'health') refreshHealthBodyLive();
+    }, 1000);
+  })();
+
+  // ---------- Installation PWA ----------
+  let deferredInstallPrompt = null;
+  window.addEventListener('beforeinstallprompt', (e) => {
+    e.preventDefault();
+    deferredInstallPrompt = e;
+    document.getElementById('install-banner').classList.add('show');
+  });
+  document.getElementById('install-btn').addEventListener('click', async () => {
+    if(!deferredInstallPrompt) return;
+    deferredInstallPrompt.prompt();
+    await deferredInstallPrompt.userChoice;
+    deferredInstallPrompt = null;
+    document.getElementById('install-banner').classList.remove('show');
+  });
+  window.addEventListener('appinstalled', () => {
+    document.getElementById('install-banner').classList.remove('show');
+  });
+
+  // ---------- Service worker (fonctionnement hors-ligne) ----------
+  if('serviceWorker' in navigator){
+    window.addEventListener('load', () => {
+      navigator.serviceWorker.register('service-worker.js').catch(()=>{});
+    });
+  }
+})();
+</script>
+</body>
+</html>
