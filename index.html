@@ -158,6 +158,17 @@
     display:flex; align-items:center; justify-content:center;
     font-size:1.05rem; z-index:5;
   }
+  #stats-btn{
+    position:absolute; top:calc(10px + env(safe-area-inset-top)); left:56px;
+    width:34px; height:34px; border-radius:50%;
+    background:rgba(255,255,255,0.06);
+    display:flex; align-items:center; justify-content:center;
+    font-size:1.0rem; z-index:5;
+  }
+  .chart-wrap{ overflow-x:auto; -webkit-overflow-scrolling:touch; border-radius:12px; background:var(--panel-2); padding:4px 0; }
+  .chart-wrap svg{ display:block; }
+  .chart-summary{ display:grid; grid-template-columns:1fr 1fr; gap:8px; }
+  .chart-summary .stat-box{ background:var(--panel); }
   #install-banner{
     display:none;
     position:absolute; left:14px; right:14px; bottom:calc(12px + env(safe-area-inset-bottom));
@@ -212,6 +223,7 @@
 
   <div id="gear">⚙</div>
   <div id="health-btn">🫀</div>
+  <div id="stats-btn">📊</div>
 
   <div id="signal" class="state-green">
     <div class="ring-wrap">
@@ -513,6 +525,7 @@
   document.getElementById('gear').addEventListener('click', openSettings);
   document.getElementById('edit-objective').addEventListener('click', openSettings);
   document.getElementById('health-btn').addEventListener('click', openHealth);
+  document.getElementById('stats-btn').addEventListener('click', openStats);
   document.getElementById('overlay').addEventListener('click', (e)=>{
     if(e.target.id==='overlay') closeSheet();
   });
@@ -580,6 +593,84 @@
       <div class="source-note">Sources : CDC (Health Benefits of Smoking Cessation, DHHS Pub. No. 90-8416) et OMS (Tobacco: Health benefits of smoking cessation, 2020).</div>
       <button class="sheet-btn ghost" id="close-health">Fermer</button>
     `;
+  }
+
+  function buildStatsChart(){
+    const today = todayISO();
+    const todayIdx = Math.max(1, dayIndexOf(state.startDate, today));
+    const counts = [];
+    for(let d=1; d<=todayIdx; d++){
+      counts.push(cigsOnDate(dateOfDayIndex(state.startDate, d)).length);
+    }
+    const n = counts.length;
+    const total = counts.reduce((a,b)=>a+b,0);
+    const avg = n>0 ? (total/n) : 0;
+    const maxDay = Math.max(0, ...counts);
+    const minDay = n>0 ? Math.min(...counts) : 0;
+
+    const W = Math.max(320, n*26);
+    const H = 190, padL=30, padR=14, padT=16, padB=26;
+    const plotW = W-padL-padR, plotH = H-padT-padB;
+    const maxY = Math.max(1, maxDay);
+    const stepX = n>1 ? plotW/(n-1) : 0;
+    const xFor = i => padL + i*stepX;
+    const yFor = v => padT + plotH - (v/maxY)*plotH;
+
+    const pts = counts.map((c,i)=>`${xFor(i)},${yFor(c)}`).join(' ');
+    const areaPts = `${padL},${padT+plotH} ${pts} ${xFor(n-1)},${padT+plotH}`;
+
+    const labelEvery = Math.max(1, Math.ceil(n/8));
+    let xLabels = '';
+    for(let i=0;i<n;i++){
+      if(i%labelEvery===0 || i===n-1){
+        xLabels += `<text x="${xFor(i)}" y="${H-8}" font-size="9" fill="var(--text-faint)" text-anchor="middle">J${i+1}</text>`;
+      }
+    }
+    const gridMidVal = Math.round(maxY/2);
+    const gridLines = `
+      <line x1="${padL}" y1="${yFor(0)}" x2="${W-padR}" y2="${yFor(0)}" stroke="rgba(255,255,255,0.08)" stroke-width="1"/>
+      <line x1="${padL}" y1="${yFor(maxY)}" x2="${W-padR}" y2="${yFor(maxY)}" stroke="rgba(255,255,255,0.06)" stroke-width="1" stroke-dasharray="3,3"/>
+      <text x="4" y="${yFor(0)+3}" font-size="9" fill="var(--text-faint)">0</text>
+      <text x="4" y="${yFor(maxY)+3}" font-size="9" fill="var(--text-faint)">${maxY}</text>
+    `;
+
+    const dots = counts.map((c,i)=>{
+      const isLast = i===n-1;
+      return `<circle cx="${xFor(i)}" cy="${yFor(c)}" r="${isLast?4:2.5}" fill="${isLast?'var(--text)':'var(--green)'}"><title>Jour ${i+1} : ${c} cigarette${c>1?'s':''}</title></circle>`;
+    }).join('');
+
+    const svg = `<svg viewBox="0 0 ${W} ${H}" width="${W}" height="${H}" xmlns="http://www.w3.org/2000/svg">
+      ${gridLines}
+      <polygon points="${areaPts}" fill="url(#grad)" opacity="0.25"/>
+      <polyline points="${pts}" fill="none" stroke="var(--green)" stroke-width="2" stroke-linejoin="round" stroke-linecap="round"/>
+      ${dots}
+      ${xLabels}
+      <defs><linearGradient id="grad" x1="0" y1="0" x2="0" y2="1">
+        <stop offset="0%" stop-color="var(--green)"/>
+        <stop offset="100%" stop-color="var(--green)" stop-opacity="0"/>
+      </linearGradient></defs>
+    </svg>`;
+
+    return `
+      <div class="chart-summary">
+        <div class="stat-box"><div class="stat-value">${total}</div><div class="stat-label">Total cigarettes</div></div>
+        <div class="stat-box"><div class="stat-value">${avg.toFixed(1)}</div><div class="stat-label">Moyenne / jour</div></div>
+        <div class="stat-box"><div class="stat-value">${minDay}</div><div class="stat-label">Jour le plus bas</div></div>
+        <div class="stat-box"><div class="stat-value">${maxDay}</div><div class="stat-label">Jour le plus haut</div></div>
+      </div>
+      <div class="chart-wrap">${svg}</div>
+      <div class="info-line">Nombre de cigarettes enregistrées chaque jour depuis le Jour 1 (${state.startDate}) jusqu'à aujourd'hui.</div>
+      <button class="sheet-btn ghost" id="close-stats">Fermer</button>
+    `;
+  }
+
+  function openStats(){
+    currentSheet = 'stats';
+    const body = document.getElementById('sheet-body');
+    document.getElementById('sheet-title').textContent = 'Statistiques';
+    body.innerHTML = buildStatsChart();
+    document.getElementById('close-stats').addEventListener('click', closeSheet);
+    openSheet();
   }
 
   function openHealth(){
