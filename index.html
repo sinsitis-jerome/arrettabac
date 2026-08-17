@@ -37,6 +37,9 @@
     justify-content:center;
     -webkit-user-select:none; user-select:none;
   }
+  #app.paused #action{ display:none; }
+  #app.paused .stats-grid{ display:none; }
+  #app.paused .avg-line{ display:none; }
   #app{
     width:100%;
     max-width:480px;
@@ -149,19 +152,26 @@
   .objective-foot{ display:flex; justify-content:space-between; margin-top:8px; font-size:0.72rem; color:var(--text-muted); }
   .eta-value{ color:var(--text); font-weight:600; }
   .avg-line{ margin-top:6px; font-size:0.66rem; color:var(--text-faint); text-align:center; }
-  #situation-picker{
-    display:none;
-    position:fixed; left:14px; right:14px; bottom:calc(12px + env(safe-area-inset-bottom));
-    max-width:452px; margin:0 auto;
-    background:var(--panel); border:1px solid rgba(255,255,255,0.1);
-    border-radius:14px; padding:12px 14px;
-    z-index:18; box-shadow:0 8px 24px rgba(0,0,0,0.4);
-  }
-  #situation-picker.show{ display:block; }
-  .sp-head{ display:flex; justify-content:space-between; align-items:center; margin-bottom:8px; }
-  .sp-head span{ font-size:0.8rem; color:var(--text-muted); }
   .sp-close{ font-size:0.72rem; color:var(--text-faint); text-decoration:underline; }
-  #situation-select{ width:100%; background:var(--panel-2); color:var(--text); border:none; border-radius:10px; padding:11px 10px; font-size:0.9rem; }
+  #situation-fullscreen{
+    display:none;
+    position:fixed; inset:0; background:var(--bg);
+    z-index:30; flex-direction:column;
+    padding: calc(20px + env(safe-area-inset-top)) 18px calc(20px + env(safe-area-inset-bottom));
+  }
+  #situation-fullscreen.show{ display:flex; }
+  .sf-header{ display:flex; justify-content:space-between; align-items:center; margin-bottom:20px; flex:0 0 auto; }
+  .sf-title{ font-size:1.15rem; font-weight:700; }
+  .sf-cancel{ font-size:0.85rem; color:var(--text-muted); text-decoration:underline; padding:6px; }
+  .sf-grid{ flex:1 1 auto; display:grid; grid-template-columns:1fr 1fr; gap:12px; align-content:start; overflow-y:auto; -webkit-overflow-scrolling:touch; }
+  .sf-option{
+    background:var(--panel); border-radius:16px; padding:20px 10px; text-align:center;
+    font-size:0.95rem; font-weight:600; color:var(--text); border:1px solid rgba(255,255,255,0.07);
+    min-height:84px; display:flex; align-items:center; justify-content:center; line-height:1.3;
+    transition: transform 120ms ease, background 120ms ease;
+  }
+  .sf-option:active{ transform:scale(0.95); background:var(--panel-2); }
+  .sf-option.none{ grid-column: 1 / -1; background:var(--panel-2); color:var(--text-muted); font-weight:500; min-height:64px; }
   .sit-row{ margin:8px 0; }
   .sit-row-head{ display:flex; justify-content:space-between; font-size:0.76rem; color:var(--text-muted); margin-bottom:3px; }
   .sit-bar-track{ height:6px; border-radius:4px; background:var(--panel-2); }
@@ -238,9 +248,13 @@
     width:100%; max-width:480px; background:var(--panel); border-radius:20px 20px 0 0;
     padding:18px 20px calc(20px + env(safe-area-inset-bottom));
     display:flex; flex-direction:column; gap:14px;
+    max-height:85vh; max-height:85dvh;
+    overflow-y:auto; -webkit-overflow-scrolling:touch;
   }
+
   #sheet h3{ margin:0; font-size:1rem; }
-  #sheet label{ font-size:0.75rem; color:var(--text-muted); }
+  #sheet label{ display:block; font-size:0.78rem; font-weight:700; color:var(--text); text-transform:uppercase; letter-spacing:0.5px; margin-top:22px; margin-bottom:2px; padding-top:14px; border-top:1px solid var(--divider); }
+  #sheet label:first-of-type{ margin-top:0; padding-top:0; border-top:none; }
   .field-row{ display:flex; align-items:center; gap:10px; background:var(--panel-2); border-radius:12px; padding:6px 10px; }
   .field-row input[type=number]{
     flex:1; background:transparent; border:none; color:var(--text); font-size:1.05rem; font-weight:600; padding:8px 0; font-variant-numeric: tabular-nums;
@@ -249,7 +263,7 @@
   .presets{ display:flex; gap:8px; }
   .preset-btn{ flex:1; padding:8px 0; border-radius:10px; background:var(--panel-2); border:1px solid transparent; color:var(--text-muted); font-size:0.78rem; text-align:center; }
   .preset-btn.active{ border-color:var(--green); color:var(--green); }
-  .sheet-btn{ padding:12px; border-radius:12px; border:none; font-size:0.9rem; font-weight:600; text-align:center; }
+  .sheet-btn{ display:block; width:100%; padding:12px; border-radius:12px; border:none; font-size:0.9rem; font-weight:600; text-align:center; }
   .sheet-btn.primary{ background:var(--text); color:var(--bg); }
   .sheet-btn.ghost{ background:transparent; color:var(--text-muted); }
   .sheet-btn.danger{ background:transparent; color:var(--red); }
@@ -290,9 +304,9 @@
   <div id="stats">
     <div class="stats-grid">
       <div class="stat-box"><div class="stat-value" id="stat-day">—</div><div class="stat-label">Jour du programme</div></div>
-      <div class="stat-box"><div class="stat-value" id="stat-target">—</div><div class="stat-label">Délai exigé aujourd'hui</div></div>
+      <div class="stat-box"><div class="stat-value" id="stat-target">—</div><div class="stat-label">Espacement minimum exigé</div></div>
       <div class="stat-box"><div class="stat-value" id="stat-count">0</div><div class="stat-label">Cigarettes aujourd'hui</div></div>
-      <div class="stat-box"><div class="stat-value" id="stat-record">—</div><div class="stat-label">Record du jour</div></div>
+      <div class="stat-box"><div class="stat-value" id="stat-record">—</div><div class="stat-label">Délai moyen du jour</div></div>
     </div>
 
     <div class="objective-box">
@@ -313,11 +327,12 @@
   </div>
 </div>
 
-<div id="situation-picker">
-  <div class="sp-head"><span>Contexte de cette cigarette ? (optionnel)</span><span class="sp-close" id="sp-close">Ignorer</span></div>
-  <select id="situation-select">
-    <option value="" selected disabled>Choisir une situation…</option>
-  </select>
+<div id="situation-fullscreen">
+  <div class="sf-header">
+    <div class="sf-title">Quelle situation ?</div>
+    <div class="sf-cancel" id="sf-cancel">Annuler</div>
+  </div>
+  <div class="sf-grid" id="sf-grid"></div>
 </div>
 
 <div id="backup-banner">
@@ -428,6 +443,20 @@
       .sort((a,b)=>a-b);
   }
 
+  // Écarts entre cigarettes consécutives sur toute la chronologie, rattachés au jour
+  // de la cigarette qui CLÔT l'attente (pas celle qui la démarre) — ainsi le sommeil
+  // à cheval sur minuit est crédité au réveil, et un couple 23h59/00h01 est bien détecté.
+  function gapsEndingOnDate(dateISO){
+    const all = [...state.cigarettes].map(c=>new Date(c.ts)).sort((a,b)=>a-b);
+    const gaps = [];
+    for(let i=1;i<all.length;i++){
+      if(todayISO(all[i])===dateISO){
+        gaps.push((all[i]-all[i-1])/MIN_MS);
+      }
+    }
+    return gaps;
+  }
+
   // ---------- Core logic: target minutes per day ----------
   function computeTargets(todayDayIndex){
     const T = {1: state.initialTargetMinutes};
@@ -437,12 +466,8 @@
         T[d] = T[d-1]; // jour neutre : ni réussi ni échoué
         continue;
       }
-      const cigs = cigsOnDate(prevDate);
-      let minIntervalMin = null;
-      for(let i=1;i<cigs.length;i++){
-        const gapMin = (cigs[i]-cigs[i-1])/MIN_MS;
-        if(minIntervalMin===null || gapMin<minIntervalMin) minIntervalMin = gapMin;
-      }
+      const gaps = gapsEndingOnDate(prevDate);
+      const minIntervalMin = gaps.length ? Math.min(...gaps) : null;
       if(minIntervalMin===null || minIntervalMin >= T[d-1]){
         T[d] = T[d-1] + 1;
       } else {
@@ -491,7 +516,7 @@
     if(todayPaused){
       colorState = 'pause';
       statusLabel = 'Programme en pause';
-      statusDetail = "Fumez librement aujourd'hui, sans pression. Le délai de demain restera celui d'aujourd'hui.";
+      statusDetail = "Accédez aux paramètres pour lever le mode pause.";
     } else if(elapsedMin===null){
       colorState = 'green';
       statusLabel = 'C\'est parti';
@@ -514,6 +539,7 @@
 
     // signal panel
     const signalEl = document.getElementById('signal');
+    document.getElementById('app').classList.toggle('paused', todayPaused);
     signalEl.className = 'state-'+colorState;
     document.getElementById('status-label').className = 'status-label state-'+colorState;
     document.getElementById('status-label').textContent = statusLabel;
@@ -533,8 +559,8 @@
     const ringTimer = document.getElementById('ring-timer');
     const ringSub = document.getElementById('ring-sub');
     if(colorState==='pause'){
-      ringTimer.textContent = elapsedMs===null ? '--:--' : fmtClock(elapsedMs);
-      ringSub.textContent = 'en pause';
+      ringTimer.textContent = '⏸';
+      ringSub.textContent = 'Programme en pause';
     } else if(elapsedMs===null){
       ringTimer.textContent = '--:--';
       ringSub.textContent = 'aucune donnée';
@@ -558,12 +584,9 @@
     document.getElementById('stat-target').textContent = fmtMinutes(targetMin);
     const todaysCigs = cigsOnDate(today);
     document.getElementById('stat-count').textContent = String(todaysCigs.length);
-    let record = null;
-    for(let i=1;i<todaysCigs.length;i++){
-      const gap = (todaysCigs[i]-todaysCigs[i-1])/MIN_MS;
-      if(record===null || gap>record) record = gap;
-    }
-    document.getElementById('stat-record').textContent = record===null ? '—' : fmtMinutes(record);
+    const todayGapsForAvg = gapsEndingOnDate(today);
+    const avgGapToday = todayGapsForAvg.length ? todayGapsForAvg.reduce((a,b)=>a+b,0)/todayGapsForAvg.length : null;
+    document.getElementById('stat-record').textContent = avgGapToday===null ? '—' : fmtMinutes(avgGapToday);
 
     // objective
     const obj = state.objectiveMinutes;
@@ -606,17 +629,12 @@
   }
 
   // ---------- Events ----------
-  document.getElementById('smoke-btn').addEventListener('click', async ()=>{
-    const entry = { ts: new Date().toISOString(), situation: null };
-    state.cigarettes.push(entry);
-    await saveState();
-    render();
-    showSituationPicker(entry);
+  document.getElementById('smoke-btn').addEventListener('click', ()=>{
+    openSituationChooser();
   });
 
   document.getElementById('undo-link').addEventListener('click', async ()=>{
     if(!state.cigarettes.length) return;
-    hideSituationPicker();
     let maxIdx = 0;
     state.cigarettes.forEach((c,i)=>{ if(new Date(c.ts) > new Date(state.cigarettes[maxIdx].ts)) maxIdx = i; });
     state.cigarettes.splice(maxIdx,1);
@@ -932,7 +950,7 @@
 
       <label>Pause du programme</label>
       <div class="info-line">Un jour en pause n'est ni compté comme réussi ni comme échoué : le délai exigé le lendemain restera celui d'aujourd'hui, et le voyant reste neutre. Utile en cas de voyage, maladie ou événement particulier.</div>
-      <button class="sheet-btn ghost" id="toggle-pause">${state.pausedDates.includes(todayISO()) ? "Reprendre le programme aujourd'hui" : "Mettre en pause aujourd'hui"}</button>
+      <button class="sheet-btn primary" id="toggle-pause">${state.pausedDates.includes(todayISO()) ? "Reprendre le programme aujourd'hui" : "Mettre en pause aujourd'hui"}</button>
 
       <label>Sauvegarde des données</label>
       <div class="info-line" id="last-backup-info">${state.lastBackupDate ? 'Dernière sauvegarde : ' + state.lastBackupDate : 'Dernière sauvegarde : jamais'}</div>
@@ -1116,40 +1134,34 @@
 
 
   // ---------- Contexte de la cigarette (optionnel) ----------
-  let situationTimeout = null;
-  let currentTaggingEntry = null;
-
-  (function populateSituationSelect(){
-    const sel = document.getElementById('situation-select');
+  function openSituationChooser(){
+    const grid = document.getElementById('sf-grid');
+    grid.innerHTML = '';
     SITUATIONS.forEach(s=>{
-      const opt = document.createElement('option');
-      opt.value = s.v; opt.textContent = s.l;
-      sel.appendChild(opt);
+      const btn = document.createElement('div');
+      btn.className = 'sf-option';
+      btn.textContent = s.l;
+      btn.addEventListener('click', ()=>confirmSmoke(s.v));
+      grid.appendChild(btn);
     });
-  })();
-
-  function showSituationPicker(entry){
-    currentTaggingEntry = entry;
-    const picker = document.getElementById('situation-picker');
-    const sel = document.getElementById('situation-select');
-    sel.value = '';
-    picker.classList.add('show');
-    clearTimeout(situationTimeout);
-    situationTimeout = setTimeout(hideSituationPicker, 8000);
+    const noneBtn = document.createElement('div');
+    noneBtn.className = 'sf-option none';
+    noneBtn.textContent = 'Non précisé';
+    noneBtn.addEventListener('click', ()=>confirmSmoke(null));
+    grid.appendChild(noneBtn);
+    document.getElementById('situation-fullscreen').classList.add('show');
   }
-  function hideSituationPicker(){
-    document.getElementById('situation-picker').classList.remove('show');
-    clearTimeout(situationTimeout);
-    currentTaggingEntry = null;
+  function closeSituationChooser(){
+    document.getElementById('situation-fullscreen').classList.remove('show');
   }
-  document.getElementById('situation-select').addEventListener('change', async (e)=>{
-    if(currentTaggingEntry){
-      currentTaggingEntry.situation = e.target.value || null;
-      await saveState();
-    }
-    hideSituationPicker();
-  });
-  document.getElementById('sp-close').addEventListener('click', hideSituationPicker);
+  async function confirmSmoke(situationValue){
+    const entry = { ts: new Date().toISOString(), situation: situationValue };
+    state.cigarettes.push(entry);
+    await saveState();
+    render();
+    closeSituationChooser();
+  }
+  document.getElementById('sf-cancel').addEventListener('click', closeSituationChooser);
 
   // ---------- Init ----------
   (async function init(){
