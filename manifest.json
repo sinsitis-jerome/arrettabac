@@ -1,6 +1,6 @@
 {
-  "name": "Suivi - Réduction tabac",
-  "short_name": "Délai",
+  "name": "Delay - Réduction tabac",
+  "short_name": "Delay",
   "description": "Suivi de la réduction progressive de la consommation de cigarettes",
   "start_url": "./index.html",
   "scope": "./",
