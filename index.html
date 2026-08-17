@@ -208,6 +208,18 @@
   #install-banner.show{ display:flex; }
   #install-banner span{ font-size:0.8rem; color:var(--text); }
   #install-btn{ background:var(--text); color:var(--bg); border:none; border-radius:10px; padding:8px 14px; font-size:0.8rem; font-weight:700; white-space:nowrap; }
+  #backup-banner{
+    display:none;
+    position:fixed; left:14px; right:14px; bottom:calc(12px + env(safe-area-inset-bottom));
+    max-width:452px; margin:0 auto;
+    background:var(--panel); border:1px solid rgba(255,255,255,0.1);
+    border-radius:14px; padding:12px 14px;
+    align-items:center; justify-content:space-between; gap:10px; flex-wrap:wrap;
+    z-index:17; box-shadow:0 8px 24px rgba(0,0,0,0.4);
+  }
+  #backup-banner.show{ display:flex; }
+  #backup-banner span{ font-size:0.78rem; color:var(--text); }
+  #backup-btn-inline{ background:var(--text); color:var(--bg); border:none; border-radius:10px; padding:8px 14px; font-size:0.78rem; font-weight:700; white-space:nowrap; }
   .milestone-row{ display:flex; gap:10px; align-items:flex-start; padding:9px 0; border-bottom:1px solid var(--divider); }
   .milestone-row:last-child{ border-bottom:none; }
   .milestone-check{ flex:0 0 20px; width:20px; height:20px; border-radius:50%; display:flex; align-items:center; justify-content:center; font-size:0.68rem; margin-top:1px; }
@@ -308,6 +320,14 @@
   </select>
 </div>
 
+<div id="backup-banner">
+  <span id="backup-banner-text">Ça fait un moment — sauvegarder tes données ?</span>
+  <div style="display:flex; gap:10px; align-items:center;">
+    <span class="sp-close" id="backup-banner-close">Plus tard</span>
+    <button id="backup-btn-inline">Sauvegarder</button>
+  </div>
+</div>
+
 <div id="overlay">
   <div id="sheet">
     <div id="close-sheet"></div>
@@ -362,6 +382,7 @@
         if(typeof parsed.pricePerPack !== 'number') parsed.pricePerPack = null;
         if(typeof parsed.cigsPerPack !== 'number' || parsed.cigsPerPack<=0) parsed.cigsPerPack = 20;
         if(!Array.isArray(parsed.pausedDates)) parsed.pausedDates = [];
+        if(typeof parsed.lastBackupDate !== 'string') parsed.lastBackupDate = null;
         return parsed;
       }
     }catch(e){ console.error('Erreur de lecture', e); }
@@ -380,6 +401,7 @@
       pricePerPack: null,           // prix d'un paquet (optionnel, pour "argent économisé")
       cigsPerPack: 20,              // cigarettes par paquet
       pausedDates: [],              // jours mis en pause (YYYY-MM-DD), neutres pour la progression
+      lastBackupDate: null,         // date de la dernière sauvegarde exportée
       cigarettes: [] // array of ISO timestamps, ascending
     };
   }
@@ -567,6 +589,7 @@
       etaText = 'objectif atteint 🎉';
     }
     document.getElementById('eta-date').textContent = etaText;
+    checkBackupReminder();
 
     // moyenne quotidienne actuelle : le Jour 1 est exclu car incomplet (début du programme en cours de journée)
     let avgLabel = 'à déterminer (en attente du Jour 2)';
@@ -911,12 +934,16 @@
       <div class="info-line">Un jour en pause n'est ni compté comme réussi ni comme échoué : le délai exigé le lendemain restera celui d'aujourd'hui, et le voyant reste neutre. Utile en cas de voyage, maladie ou événement particulier.</div>
       <button class="sheet-btn ghost" id="toggle-pause">${state.pausedDates.includes(todayISO()) ? "Reprendre le programme aujourd'hui" : "Mettre en pause aujourd'hui"}</button>
 
-      <label>Sauvegarde / transfert des données</label>
-      <div class="info-line">Pour migrer ton historique depuis l'ancienne version locale : ouvre-la, copie le texte via "Exporter", reviens ici et colle-le via "Importer".</div>
-      <button class="sheet-btn ghost" id="export-data">Exporter mes données</button>
+      <label>Sauvegarde des données</label>
+      <div class="info-line" id="last-backup-info">${state.lastBackupDate ? 'Dernière sauvegarde : ' + state.lastBackupDate : 'Dernière sauvegarde : jamais'}</div>
+      <button class="sheet-btn primary" id="backup-data">💾 Sauvegarder (télécharger un fichier)</button>
+      <button class="sheet-btn ghost" id="restore-data-btn">📂 Restaurer depuis un fichier</button>
+      <input type="file" id="restore-file-input" accept="application/json,.json" style="display:none">
+      <div class="info-line">Alternative si le téléchargement ne fonctionne pas sur ton téléphone : copier/coller le texte ci-dessous (utile aussi pour migrer depuis l'ancienne version locale).</div>
+      <button class="sheet-btn ghost" id="export-data">Copier le texte des données</button>
       <textarea id="export-output" readonly style="display:none;width:100%;min-height:70px;background:var(--panel-2);color:var(--text);border:none;border-radius:10px;padding:8px;font-size:0.7rem;"></textarea>
       <textarea id="import-input" placeholder="Colle ici les données exportées" style="width:100%;min-height:70px;background:var(--panel-2);color:var(--text);border:none;border-radius:10px;padding:8px;font-size:0.7rem;"></textarea>
-      <button class="sheet-btn ghost" id="import-data">Importer ces données</button>
+      <button class="sheet-btn ghost" id="import-data">Importer ce texte</button>
 
       <button class="sheet-btn danger" id="reset-program">Réinitialiser le programme</button>
       <button class="sheet-btn ghost" id="cancel-settings">Fermer</button>
@@ -949,6 +976,31 @@
     document.getElementById('reset-program').addEventListener('click', ()=>{
       confirmReset();
     });
+    document.getElementById('backup-data').addEventListener('click', async ()=>{
+      await triggerBackupDownload();
+      document.getElementById('last-backup-info').textContent = 'Dernière sauvegarde : ' + state.lastBackupDate;
+    });
+    document.getElementById('restore-data-btn').addEventListener('click', ()=>{
+      document.getElementById('restore-file-input').click();
+    });
+    document.getElementById('restore-file-input').addEventListener('change', (e)=>{
+      const file = e.target.files[0];
+      if(!file) return;
+      const reader = new FileReader();
+      reader.onload = async (ev)=>{
+        try{
+          const parsed = JSON.parse(ev.target.result);
+          if(!Array.isArray(parsed.cigarettes)) throw new Error('format invalide');
+          state = stateFromParsed(parsed);
+          await saveState();
+          render();
+          closeSheet();
+        }catch(err){
+          alert('Fichier invalide : la restauration a échoué.');
+        }
+      };
+      reader.readAsText(file);
+    });
     document.getElementById('export-data').addEventListener('click', ()=>{
       const out = document.getElementById('export-output');
       out.value = JSON.stringify(state);
@@ -964,13 +1016,7 @@
       try{
         const parsed = JSON.parse(raw);
         if(!Array.isArray(parsed.cigarettes)) throw new Error('format invalide');
-        state = {
-          startDate: parsed.startDate || todayISO(),
-          objectiveMinutes: typeof parsed.objectiveMinutes==='number' ? parsed.objectiveMinutes : 1440,
-          initialTargetMinutes: typeof parsed.initialTargetMinutes==='number' ? parsed.initialTargetMinutes : 9,
-          baselineDailyCigs: typeof parsed.baselineDailyCigs==='number' ? parsed.baselineDailyCigs : null,
-          cigarettes: (parsed.cigarettes || []).map(normalizeCig)
-        };
+        state = stateFromParsed(parsed);
         await saveState();
         render();
         closeSheet();
@@ -980,6 +1026,66 @@
     });
     openSheet();
   }
+
+  // ---------- Sauvegarde / restauration ----------
+  function stateFromParsed(parsed){
+    return {
+      startDate: parsed.startDate || todayISO(),
+      objectiveMinutes: typeof parsed.objectiveMinutes==='number' ? parsed.objectiveMinutes : 1440,
+      initialTargetMinutes: typeof parsed.initialTargetMinutes==='number' ? parsed.initialTargetMinutes : 9,
+      baselineDailyCigs: typeof parsed.baselineDailyCigs==='number' ? parsed.baselineDailyCigs : null,
+      pricePerPack: typeof parsed.pricePerPack==='number' ? parsed.pricePerPack : null,
+      cigsPerPack: (typeof parsed.cigsPerPack==='number' && parsed.cigsPerPack>=1) ? parsed.cigsPerPack : 20,
+      pausedDates: Array.isArray(parsed.pausedDates) ? parsed.pausedDates : [],
+      lastBackupDate: typeof parsed.lastBackupDate==='string' ? parsed.lastBackupDate : null,
+      cigarettes: (parsed.cigarettes || []).map(normalizeCig)
+    };
+  }
+
+  let backupBannerDismissed = false;
+
+  async function triggerBackupDownload(){
+    state.lastBackupDate = todayISO();
+    await saveState();
+    const blob = new Blob([JSON.stringify(state, null, 2)], { type:'application/json' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `suivi-cigarettes-sauvegarde-${todayISO()}.json`;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    setTimeout(()=>URL.revokeObjectURL(url), 2000);
+    backupBannerDismissed = true;
+    document.getElementById('backup-banner').classList.remove('show');
+  }
+
+  function checkBackupReminder(){
+    const banner = document.getElementById('backup-banner');
+    if(!banner || backupBannerDismissed || state.cigarettes.length===0){
+      if(banner) banner.classList.remove('show');
+      return;
+    }
+    const installBanner = document.getElementById('install-banner');
+    if(installBanner && installBanner.classList.contains('show')){
+      banner.classList.remove('show');
+      return;
+    }
+    const todayIdx = Math.max(1, dayIndexOf(state.startDate, todayISO()));
+    let due = false;
+    if(!state.lastBackupDate){
+      due = todayIdx >= 7;
+    } else {
+      const daysSince = Math.round((new Date(todayISO()) - new Date(state.lastBackupDate)) / (24*60*MIN_MS));
+      due = daysSince >= 30;
+    }
+    banner.classList.toggle('show', due);
+  }
+  document.getElementById('backup-btn-inline').addEventListener('click', triggerBackupDownload);
+  document.getElementById('backup-banner-close').addEventListener('click', ()=>{
+    backupBannerDismissed = true;
+    document.getElementById('backup-banner').classList.remove('show');
+  });
 
   function confirmReset(){
     const body = document.getElementById('sheet-body');
@@ -998,6 +1104,7 @@
         pricePerPack: state.pricePerPack,
         cigsPerPack: state.cigsPerPack,
         pausedDates: [],
+        lastBackupDate: state.lastBackupDate,
         cigarettes: []
       };
       await saveState();
