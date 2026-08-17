@@ -23,6 +23,9 @@
     --green: #5F9270;
     --green-glow: rgba(95,146,112,0.32);
     --divider: rgba(255,255,255,0.06);
+    --blue: #7FA0B8;
+    --pause: #7A828A;
+    --pause-glow: rgba(122,130,138,0.28);
   }
   *{ box-sizing:border-box; -webkit-tap-highlight-color: transparent; }
   html,body{ height:100%; margin:0; overscroll-behavior:none; }
@@ -56,6 +59,7 @@
     min-height:0;
   }
   #signal.state-red{ background: radial-gradient(circle at 50% 40%, var(--red-glow), transparent 70%); }
+  #signal.state-pause{ background: radial-gradient(circle at 50% 40%, var(--pause-glow), transparent 70%); }
   #signal.state-amber{ background: radial-gradient(circle at 50% 40%, var(--amber-glow), transparent 70%); }
   #signal.state-green{ background: radial-gradient(circle at 50% 40%, var(--green-glow), transparent 70%); }
 
@@ -64,6 +68,7 @@
   .ring-bg{ fill:none; stroke:rgba(255,255,255,0.08); stroke-width:8; }
   .ring-fg{ fill:none; stroke-width:8; stroke-linecap:round; transition: stroke-dashoffset 900ms ease, stroke 600ms ease; }
   .ring-fg.state-red{ stroke:var(--red); }
+  .ring-fg.state-pause{ stroke:var(--pause); }
   .ring-fg.state-amber{ stroke:var(--amber); }
   .ring-fg.state-green{ stroke:var(--green); }
 
@@ -77,6 +82,7 @@
 
   .status-label{ margin-top:14px; font-size:1.05rem; font-weight:600; text-align:center; }
   .status-label.state-red{ color:var(--red); }
+  .status-label.state-pause{ color:var(--pause); }
   .status-label.state-amber{ color:var(--amber); }
   .status-label.state-green{ color:var(--green); }
   .status-detail{ margin-top:3px; font-size:0.78rem; color:var(--text-muted); text-align:center; max-width:280px; }
@@ -143,6 +149,28 @@
   .objective-foot{ display:flex; justify-content:space-between; margin-top:8px; font-size:0.72rem; color:var(--text-muted); }
   .eta-value{ color:var(--text); font-weight:600; }
   .avg-line{ margin-top:6px; font-size:0.66rem; color:var(--text-faint); text-align:center; }
+  #situation-picker{
+    display:none;
+    position:fixed; left:14px; right:14px; bottom:calc(12px + env(safe-area-inset-bottom));
+    max-width:452px; margin:0 auto;
+    background:var(--panel); border:1px solid rgba(255,255,255,0.1);
+    border-radius:14px; padding:12px 14px;
+    z-index:18; box-shadow:0 8px 24px rgba(0,0,0,0.4);
+  }
+  #situation-picker.show{ display:block; }
+  .sp-head{ display:flex; justify-content:space-between; align-items:center; margin-bottom:8px; }
+  .sp-head span{ font-size:0.8rem; color:var(--text-muted); }
+  .sp-close{ font-size:0.72rem; color:var(--text-faint); text-decoration:underline; }
+  #situation-select{ width:100%; background:var(--panel-2); color:var(--text); border:none; border-radius:10px; padding:11px 10px; font-size:0.9rem; }
+  .sit-row{ margin:8px 0; }
+  .sit-row-head{ display:flex; justify-content:space-between; font-size:0.76rem; color:var(--text-muted); margin-bottom:3px; }
+  .sit-bar-track{ height:6px; border-radius:4px; background:var(--panel-2); }
+  .sit-bar-fill{ height:100%; border-radius:4px; background:var(--green); }
+  .chart-legend{ display:flex; gap:16px; justify-content:center; margin-top:6px; font-size:0.68rem; color:var(--text-muted); }
+  .chart-legend span{ display:inline-flex; align-items:center; gap:5px; }
+  .legend-dot{ width:8px; height:8px; border-radius:50%; display:inline-block; }
+  .view-toggle{ display:flex; gap:8px; margin-bottom:10px; }
+  .view-toggle .preset-btn{ cursor:pointer; }
 
   #gear{
     position:absolute; top:calc(10px + env(safe-area-inset-top)); right:14px;
@@ -268,9 +296,16 @@
         <span>Progression : <span id="progress-pct">0%</span></span>
         <span>Échéance : <span class="eta-value" id="eta-date">à déterminer</span></span>
       </div>
-      <div class="avg-line" id="avg-consumption">Moyenne : — /24h · — /jour (7j)</div>
+      <div class="avg-line" id="avg-consumption">Moyenne quotidienne actuelle : —</div>
     </div>
   </div>
+</div>
+
+<div id="situation-picker">
+  <div class="sp-head"><span>Contexte de cette cigarette ? (optionnel)</span><span class="sp-close" id="sp-close">Ignorer</span></div>
+  <select id="situation-select">
+    <option value="" selected disabled>Choisir une situation…</option>
+  </select>
 </div>
 
 <div id="overlay">
@@ -290,6 +325,26 @@
 (function(){
   const STORAGE_KEY = 'nic-tracker-state-v1';
   const MIN_MS = 60000;
+  const SITUATIONS = [
+    { v:'bureau',    l:'Travail de bureau' },
+    { v:'pause',     l:'Pause au travail' },
+    { v:'jeu',       l:'Jeu vidéo / ordinateur' },
+    { v:'repas',     l:'Après repas' },
+    { v:'apero',     l:'Apéritif / soirée' },
+    { v:'cafe',      l:'Café / pause boisson' },
+    { v:'stress',    l:'Stress / contrariété' },
+    { v:'social',    l:'Entre amis / social' },
+    { v:'conduite',  l:'En voiture / conduite' },
+    { v:'ennui',     l:'Ennui' },
+    { v:'reveil',    l:'Réveil / matin' },
+    { v:'autre',     l:'Autre' }
+  ];
+  const SITUATION_LABELS = Object.fromEntries(SITUATIONS.map(s=>[s.v, s.l]));
+
+  function normalizeCig(item){
+    return (typeof item === 'string') ? { ts: item, situation: null } : { ts: item.ts, situation: item.situation || null };
+  }
+
   let state = null;
   let tickTimer = null;
 
@@ -303,6 +358,10 @@
         if(typeof parsed.objectiveMinutes !== 'number') parsed.objectiveMinutes = 1440;
         else if(parsed.objectiveMinutes === 120) parsed.objectiveMinutes = 1440; // ancien défaut -> nouveau défaut (0 cig/24h)
         if(typeof parsed.baselineDailyCigs !== 'number') parsed.baselineDailyCigs = null;
+        parsed.cigarettes = (parsed.cigarettes || []).map(normalizeCig);
+        if(typeof parsed.pricePerPack !== 'number') parsed.pricePerPack = null;
+        if(typeof parsed.cigsPerPack !== 'number' || parsed.cigsPerPack<=0) parsed.cigsPerPack = 20;
+        if(!Array.isArray(parsed.pausedDates)) parsed.pausedDates = [];
         return parsed;
       }
     }catch(e){ console.error('Erreur de lecture', e); }
@@ -318,6 +377,9 @@
       objectiveMinutes: 1440,       // 24h = 0 cigarette sur une journée
       initialTargetMinutes: 9,      // délai du jour 1, paramétrable (utile en cas de rechute)
       baselineDailyCigs: null,      // consommation habituelle avant le programme (optionnel, pour "cigarettes évitées")
+      pricePerPack: null,           // prix d'un paquet (optionnel, pour "argent économisé")
+      cigsPerPack: 20,              // cigarettes par paquet
+      pausedDates: [],              // jours mis en pause (YYYY-MM-DD), neutres pour la progression
       cigarettes: [] // array of ISO timestamps, ascending
     };
   }
@@ -339,7 +401,7 @@
   }
   function cigsOnDate(dateISO){
     return state.cigarettes
-      .map(t=>new Date(t))
+      .map(c=>new Date(c.ts))
       .filter(d=>todayISO(d)===dateISO)
       .sort((a,b)=>a-b);
   }
@@ -349,6 +411,10 @@
     const T = {1: state.initialTargetMinutes};
     for(let d=2; d<=todayDayIndex; d++){
       const prevDate = dateOfDayIndex(state.startDate, d-1);
+      if(state.pausedDates.includes(prevDate)){
+        T[d] = T[d-1]; // jour neutre : ni réussi ni échoué
+        continue;
+      }
       const cigs = cigsOnDate(prevDate);
       let minIntervalMin = null;
       for(let i=1;i<cigs.length;i++){
@@ -388,7 +454,7 @@
     const targetMin = T[dayIndex];
     const floorMin = dayIndex>1 ? T[dayIndex-1] : T[1];
 
-    const sortedCigs = [...state.cigarettes].map(t=>new Date(t)).sort((a,b)=>a-b);
+    const sortedCigs = [...state.cigarettes].map(c=>new Date(c.ts)).sort((a,b)=>a-b);
     const last = sortedCigs.length ? sortedCigs[sortedCigs.length-1] : null;
     const now = new Date();
     const elapsedMs = last ? (now-last) : null;
@@ -398,7 +464,13 @@
     let statusLabel = 'Vous pouvez fumer';
     let statusDetail = `Le délai du jour (${fmtMinutes(targetMin)}) est atteint.`;
 
-    if(elapsedMin===null){
+    const todayPaused = state.pausedDates.includes(today);
+
+    if(todayPaused){
+      colorState = 'pause';
+      statusLabel = 'Programme en pause';
+      statusDetail = "Fumez librement aujourd'hui, sans pression. Le délai de demain restera celui d'aujourd'hui.";
+    } else if(elapsedMin===null){
       colorState = 'green';
       statusLabel = 'C\'est parti';
       statusDetail = 'Enregistrez votre première cigarette pour démarrer le programme.';
@@ -429,8 +501,8 @@
     const ring = document.getElementById('ring-fg');
     ring.className = 'ring-fg state-'+colorState;
     const circumference = 276.5;
-    let frac = 0;
-    if(elapsedMin!==null){
+    let frac = 1;
+    if(colorState!=='pause' && elapsedMin!==null){
       const refTarget = colorState==='red' ? floorMin : targetMin;
       frac = refTarget>0 ? Math.min(1, elapsedMin/refTarget) : 1;
     }
@@ -438,7 +510,10 @@
 
     const ringTimer = document.getElementById('ring-timer');
     const ringSub = document.getElementById('ring-sub');
-    if(elapsedMs===null){
+    if(colorState==='pause'){
+      ringTimer.textContent = elapsedMs===null ? '--:--' : fmtClock(elapsedMs);
+      ringSub.textContent = 'en pause';
+    } else if(elapsedMs===null){
       ringTimer.textContent = '--:--';
       ringSub.textContent = 'aucune donnée';
     } else if(colorState==='green'){
@@ -493,33 +568,37 @@
     }
     document.getElementById('eta-date').textContent = etaText;
 
-    // moyenne de consommation (24h glissantes / 7 derniers jours)
-    const nowMs = now.getTime();
-    const count24h = sortedCigs.filter(d => nowMs - d.getTime() <= 24*60*MIN_MS).length;
-    const count7d = sortedCigs.filter(d => nowMs - d.getTime() <= 7*24*60*MIN_MS).length;
-    const daysForAvg = Math.min(7, dayIndex);
-    const avg7d = daysForAvg>0 ? (count7d/daysForAvg) : 0;
-    document.getElementById('avg-consumption').textContent =
-      `Moyenne : ${count24h} /24h · ${avg7d.toFixed(1)} /jour (${daysForAvg}j)`;
+    // moyenne quotidienne actuelle : le Jour 1 est exclu car incomplet (début du programme en cours de journée)
+    let avgLabel = 'à déterminer (en attente du Jour 2)';
+    if(dayIndex >= 2){
+      let sinceDay2Total = 0;
+      for(let d=2; d<=dayIndex; d++){
+        sinceDay2Total += cigsOnDate(dateOfDayIndex(state.startDate, d)).length;
+      }
+      const daysCounted = dayIndex - 1;
+      const avgSinceDay2 = sinceDay2Total / daysCounted;
+      avgLabel = `${avgSinceDay2.toFixed(1)} cigarette${avgSinceDay2>=2?'s':''}/jour (depuis le Jour 2, sur ${daysCounted} jour${daysCounted>1?'s':''})`;
+    }
+    document.getElementById('avg-consumption').textContent = `Moyenne quotidienne actuelle : ${avgLabel}`;
   }
 
   // ---------- Events ----------
   document.getElementById('smoke-btn').addEventListener('click', async ()=>{
-    state.cigarettes.push(new Date().toISOString());
+    const entry = { ts: new Date().toISOString(), situation: null };
+    state.cigarettes.push(entry);
     await saveState();
     render();
+    showSituationPicker(entry);
   });
 
   document.getElementById('undo-link').addEventListener('click', async ()=>{
     if(!state.cigarettes.length) return;
-    const sorted = [...state.cigarettes].sort();
-    const lastTs = sorted[sorted.length-1];
-    const idx = state.cigarettes.indexOf(lastTs);
-    if(idx>-1){
-      state.cigarettes.splice(idx,1);
-      await saveState();
-      render();
-    }
+    hideSituationPicker();
+    let maxIdx = 0;
+    state.cigarettes.forEach((c,i)=>{ if(new Date(c.ts) > new Date(state.cigarettes[maxIdx].ts)) maxIdx = i; });
+    state.cigarettes.splice(maxIdx,1);
+    await saveState();
+    render();
   });
 
   document.getElementById('gear').addEventListener('click', openSettings);
@@ -561,7 +640,7 @@
   let currentSheet = null; // 'settings' | 'health' | null
 
   function buildHealthBody(){
-    const sortedCigs = [...state.cigarettes].map(t=>new Date(t)).sort((a,b)=>a-b);
+    const sortedCigs = [...state.cigarettes].map(c=>new Date(c.ts)).sort((a,b)=>a-b);
     const last = sortedCigs.length ? sortedCigs[sortedCigs.length-1] : null;
     const elapsedMs = last ? (new Date() - last) : 0;
 
@@ -595,61 +674,105 @@
     `;
   }
 
+  let statsViewMode = 'day';
+
+  function aggregateCounts(counts, mode){
+    const bucketSize = mode==='week' ? 7 : mode==='month' ? 30 : 1;
+    if(bucketSize===1) return counts.map((c,i)=>({ value:c, startDay:i+1, endDay:i+1 }));
+    const buckets = [];
+    for(let start=0; start<counts.length; start+=bucketSize){
+      const slice = counts.slice(start, start+bucketSize);
+      const avg = slice.reduce((a,b)=>a+b,0)/slice.length;
+      buckets.push({ value:avg, startDay:start+1, endDay:start+slice.length });
+    }
+    return buckets;
+  }
+
   function buildStatsChart(){
+    const mode = statsViewMode;
     const today = todayISO();
     const todayIdx = Math.max(1, dayIndexOf(state.startDate, today));
     const counts = [];
     for(let d=1; d<=todayIdx; d++){
       counts.push(cigsOnDate(dateOfDayIndex(state.startDate, d)).length);
     }
-    const n = counts.length;
     const total = counts.reduce((a,b)=>a+b,0);
-    const avg = n>0 ? (total/n) : 0;
+    const avg = counts.length>0 ? (total/counts.length) : 0;
     const maxDay = Math.max(0, ...counts);
-    const minDay = n>0 ? Math.min(...counts) : 0;
+    const minDay = counts.length>0 ? Math.min(...counts) : 0;
 
-    const W = Math.max(320, n*26);
+    // moyenne cumulée, jour par jour (base pour la 2e courbe, quel que soit le mode d'affichage)
+    const cumAvgDaily = [];
+    let running = 0;
+    counts.forEach((c,i)=>{ running += c; cumAvgDaily.push(running/(i+1)); });
+
+    const buckets = aggregateCounts(counts, mode);
+    const n = buckets.length;
+    const values1 = buckets.map(b=>b.value);
+    const values2 = buckets.map(b=>cumAvgDaily[b.endDay-1] || 0);
+
+    const perPoint = mode==='day' ? 24 : 38;
+    const W = Math.max(320, n*perPoint);
     const H = 190, padL=30, padR=14, padT=16, padB=26;
     const plotW = W-padL-padR, plotH = H-padT-padB;
-    const maxY = Math.max(1, maxDay);
+    const maxY = Math.max(1, ...values1, ...values2);
     const stepX = n>1 ? plotW/(n-1) : 0;
     const xFor = i => padL + i*stepX;
     const yFor = v => padT + plotH - (v/maxY)*plotH;
 
-    const pts = counts.map((c,i)=>`${xFor(i)},${yFor(c)}`).join(' ');
-    const areaPts = `${padL},${padT+plotH} ${pts} ${xFor(n-1)},${padT+plotH}`;
+    const pts1 = values1.map((v,i)=>`${xFor(i)},${yFor(v)}`).join(' ');
+    const pts2 = values2.map((v,i)=>`${xFor(i)},${yFor(v)}`).join(' ');
+    const areaPts = `${padL},${padT+plotH} ${pts1} ${xFor(n-1)},${padT+plotH}`;
 
+    const labelPrefix = mode==='day' ? 'J' : mode==='week' ? 'S' : 'M';
     const labelEvery = Math.max(1, Math.ceil(n/8));
     let xLabels = '';
     for(let i=0;i<n;i++){
       if(i%labelEvery===0 || i===n-1){
-        xLabels += `<text x="${xFor(i)}" y="${H-8}" font-size="9" fill="var(--text-faint)" text-anchor="middle">J${i+1}</text>`;
+        xLabels += `<text x="${xFor(i)}" y="${H-8}" font-size="9" fill="var(--text-faint)" text-anchor="middle">${labelPrefix}${i+1}</text>`;
       }
     }
-    const gridMidVal = Math.round(maxY/2);
     const gridLines = `
       <line x1="${padL}" y1="${yFor(0)}" x2="${W-padR}" y2="${yFor(0)}" stroke="rgba(255,255,255,0.08)" stroke-width="1"/>
       <line x1="${padL}" y1="${yFor(maxY)}" x2="${W-padR}" y2="${yFor(maxY)}" stroke="rgba(255,255,255,0.06)" stroke-width="1" stroke-dasharray="3,3"/>
       <text x="4" y="${yFor(0)+3}" font-size="9" fill="var(--text-faint)">0</text>
-      <text x="4" y="${yFor(maxY)+3}" font-size="9" fill="var(--text-faint)">${maxY}</text>
+      <text x="4" y="${yFor(maxY)+3}" font-size="9" fill="var(--text-faint)">${maxY.toFixed(1)}</text>
     `;
 
-    const dots = counts.map((c,i)=>{
+    const unitLabel = mode==='day' ? 'cigarette' : 'cig/j en moyenne';
+    const dots1 = buckets.map((b,i)=>{
       const isLast = i===n-1;
-      return `<circle cx="${xFor(i)}" cy="${yFor(c)}" r="${isLast?4:2.5}" fill="${isLast?'var(--text)':'var(--green)'}"><title>Jour ${i+1} : ${c} cigarette${c>1?'s':''}</title></circle>`;
+      const label = mode==='day' ? `Jour ${b.startDay} : ${b.value} ${unitLabel}${b.value>1?'s':''}` : `${labelPrefix}${i+1} (jours ${b.startDay}-${b.endDay}) : ${b.value.toFixed(1)} ${unitLabel}`;
+      return `<circle cx="${xFor(i)}" cy="${yFor(b.value)}" r="${isLast?4:2.5}" fill="${isLast?'var(--text)':'var(--green)'}"><title>${label}</title></circle>`;
+    }).join('');
+    const dots2 = values2.map((v,i)=>{
+      return `<circle cx="${xFor(i)}" cy="${yFor(v)}" r="2" fill="var(--blue)"><title>Moyenne cumulée au ${labelPrefix}${i+1} : ${v.toFixed(2)} cig/j</title></circle>`;
     }).join('');
 
     const svg = `<svg viewBox="0 0 ${W} ${H}" width="${W}" height="${H}" xmlns="http://www.w3.org/2000/svg">
       ${gridLines}
-      <polygon points="${areaPts}" fill="url(#grad)" opacity="0.25"/>
-      <polyline points="${pts}" fill="none" stroke="var(--green)" stroke-width="2" stroke-linejoin="round" stroke-linecap="round"/>
-      ${dots}
+      <polygon points="${areaPts}" fill="url(#grad)" opacity="0.2"/>
+      <polyline points="${pts1}" fill="none" stroke="var(--green)" stroke-width="2" stroke-linejoin="round" stroke-linecap="round"/>
+      <polyline points="${pts2}" fill="none" stroke="var(--blue)" stroke-width="1.6" stroke-dasharray="4,3" stroke-linejoin="round" stroke-linecap="round"/>
+      ${dots1}
+      ${dots2}
       ${xLabels}
       <defs><linearGradient id="grad" x1="0" y1="0" x2="0" y2="1">
         <stop offset="0%" stop-color="var(--green)"/>
         <stop offset="100%" stop-color="var(--green)" stop-opacity="0"/>
       </linearGradient></defs>
     </svg>`;
+
+    let moneyLine = '';
+    if(state.baselineDailyCigs && state.pricePerPack && state.cigsPerPack){
+      const estimatedBaselineTotal = state.baselineDailyCigs * todayIdx;
+      const avoided = Math.max(0, estimatedBaselineTotal - total);
+      const pricePerCig = state.pricePerPack / state.cigsPerPack;
+      const saved = avoided * pricePerCig;
+      moneyLine = `<div class="health-stat">Argent économisé (estimation) : <b>${saved.toFixed(2)} €</b> (${avoided} cigarette${avoided>1?'s':''} évitée${avoided>1?'s':''})</div>`;
+    } else {
+      moneyLine = `<div class="health-stat" style="color:var(--text-muted)">Renseigne ta consommation habituelle et le prix d'un paquet dans les réglages (⚙) pour voir l'argent économisé.</div>`;
+    }
 
     return `
       <div class="chart-summary">
@@ -658,10 +781,53 @@
         <div class="stat-box"><div class="stat-value">${minDay}</div><div class="stat-label">Jour le plus bas</div></div>
         <div class="stat-box"><div class="stat-value">${maxDay}</div><div class="stat-label">Jour le plus haut</div></div>
       </div>
+      ${moneyLine}
+      <div class="view-toggle">
+        <div class="preset-btn view-btn ${mode==='day'?'active':''}" data-mode="day">Jour</div>
+        <div class="preset-btn view-btn ${mode==='week'?'active':''}" data-mode="week">Semaine</div>
+        <div class="preset-btn view-btn ${mode==='month'?'active':''}" data-mode="month">Mois</div>
+      </div>
       <div class="chart-wrap">${svg}</div>
-      <div class="info-line">Nombre de cigarettes enregistrées chaque jour depuis le Jour 1 (${state.startDate}) jusqu'à aujourd'hui.</div>
+      <div class="chart-legend">
+        <span><span class="legend-dot" style="background:var(--green)"></span>Consommation</span>
+        <span><span class="legend-dot" style="background:var(--blue)"></span>Moyenne cumulée depuis le début</span>
+      </div>
+      <div class="info-line">Consommation quotidienne (verte) et moyenne cumulée depuis le Jour 1 (bleue, en pointillés) — ${state.startDate} à aujourd'hui.</div>
+      ${buildSituationBreakdown()}
       <button class="sheet-btn ghost" id="close-stats">Fermer</button>
     `;
+  }
+
+  function buildSituationBreakdown(){
+    if(!state.cigarettes.length) return '';
+    const counts = {};
+    state.cigarettes.forEach(c=>{
+      const key = c.situation || '_none';
+      counts[key] = (counts[key]||0) + 1;
+    });
+    const total = state.cigarettes.length;
+    const rows = Object.entries(counts)
+      .sort((a,b)=>b[1]-a[1])
+      .map(([key,count])=>{
+        const label = key==='_none' ? 'Non précisé' : (SITUATION_LABELS[key] || key);
+        const pct = Math.round((count/total)*100);
+        return `<div class="sit-row">
+          <div class="sit-row-head"><span>${label}</span><span>${count} (${pct}%)</span></div>
+          <div class="sit-bar-track"><div class="sit-bar-fill" style="width:${pct}%"></div></div>
+        </div>`;
+      }).join('');
+    return `<label style="display:block;margin-top:2px;">Répartition par situation</label>${rows}`;
+  }
+
+  function wireStatsBody(){
+    document.getElementById('close-stats').addEventListener('click', closeSheet);
+    document.querySelectorAll('.view-btn').forEach(btn=>{
+      btn.addEventListener('click', ()=>{
+        statsViewMode = btn.dataset.mode;
+        document.getElementById('sheet-body').innerHTML = buildStatsChart();
+        wireStatsBody();
+      });
+    });
   }
 
   function openStats(){
@@ -669,7 +835,7 @@
     const body = document.getElementById('sheet-body');
     document.getElementById('sheet-title').textContent = 'Statistiques';
     body.innerHTML = buildStatsChart();
-    document.getElementById('close-stats').addEventListener('click', closeSheet);
+    wireStatsBody();
     openSheet();
   }
 
@@ -721,7 +887,18 @@
         <input type="number" id="baseline-input" min="1" step="1" placeholder="ex. 20" value="${state.baselineDailyCigs || ''}">
         <span style="color:var(--text-muted);font-size:0.85rem;">cig/jour</span>
       </div>
-      <div class="info-line">Sert uniquement à estimer les cigarettes évitées dans l'onglet Santé (🫀). Laisser vide si inconnu.</div>
+      <div class="info-line">Sert uniquement à estimer les cigarettes évitées et l'argent économisé dans les onglets Santé (🫀) et Statistiques (📊). Laisser vide si inconnu.</div>
+
+      <label>Prix d'un paquet (optionnel)</label>
+      <div class="field-row">
+        <input type="number" id="price-input" min="0" step="0.01" placeholder="ex. 11.00" value="${state.pricePerPack || ''}">
+        <span style="color:var(--text-muted);font-size:0.85rem;">€</span>
+      </div>
+      <div class="field-row" style="margin-top:6px;">
+        <input type="number" id="perpack-input" min="1" step="1" value="${state.cigsPerPack}">
+        <span style="color:var(--text-muted);font-size:0.85rem;">cig/paquet</span>
+      </div>
+      <div class="info-line">Avec la consommation habituelle ci-dessus, sert à estimer l'argent économisé dans l'onglet Statistiques (📊).</div>
 
       <div class="info-line">
         <span class="swatch" style="background:var(--red)"></span>Rouge : sous le délai d'hier &nbsp;
@@ -729,6 +906,10 @@
         <span class="swatch" style="background:var(--green)"></span>Vert : délai du jour atteint
       </div>
       <button class="sheet-btn primary" id="save-settings">Enregistrer</button>
+
+      <label>Pause du programme</label>
+      <div class="info-line">Un jour en pause n'est ni compté comme réussi ni comme échoué : le délai exigé le lendemain restera celui d'aujourd'hui, et le voyant reste neutre. Utile en cas de voyage, maladie ou événement particulier.</div>
+      <button class="sheet-btn ghost" id="toggle-pause">${state.pausedDates.includes(todayISO()) ? "Reprendre le programme aujourd'hui" : "Mettre en pause aujourd'hui"}</button>
 
       <label>Sauvegarde / transfert des données</label>
       <div class="info-line">Pour migrer ton historique depuis l'ancienne version locale : ouvre-la, copie le texte via "Exporter", reviens ici et colle-le via "Importer".</div>
@@ -747,13 +928,24 @@
       const v = parseInt(document.getElementById('obj-input').value, 10);
       const initV = parseInt(document.getElementById('initial-input').value, 10);
       const baseV = parseInt(document.getElementById('baseline-input').value, 10);
+      const priceV = parseFloat(document.getElementById('price-input').value);
+      const perPackV = parseInt(document.getElementById('perpack-input').value, 10);
       if(v && v>=10){ state.objectiveMinutes = v; }
       if(initV && initV>=1){ state.initialTargetMinutes = initV; }
       state.baselineDailyCigs = (baseV && baseV>=1) ? baseV : null;
+      state.pricePerPack = (priceV && priceV>0) ? priceV : null;
+      state.cigsPerPack = (perPackV && perPackV>=1) ? perPackV : 20;
       await saveState(); render();
       closeSheet();
     });
     document.getElementById('cancel-settings').addEventListener('click', closeSheet);
+    document.getElementById('toggle-pause').addEventListener('click', async ()=>{
+      const today = todayISO();
+      const idx = state.pausedDates.indexOf(today);
+      if(idx>-1){ state.pausedDates.splice(idx,1); } else { state.pausedDates.push(today); }
+      await saveState(); render();
+      closeSheet();
+    });
     document.getElementById('reset-program').addEventListener('click', ()=>{
       confirmReset();
     });
@@ -777,7 +969,7 @@
           objectiveMinutes: typeof parsed.objectiveMinutes==='number' ? parsed.objectiveMinutes : 1440,
           initialTargetMinutes: typeof parsed.initialTargetMinutes==='number' ? parsed.initialTargetMinutes : 9,
           baselineDailyCigs: typeof parsed.baselineDailyCigs==='number' ? parsed.baselineDailyCigs : null,
-          cigarettes: parsed.cigarettes
+          cigarettes: (parsed.cigarettes || []).map(normalizeCig)
         };
         await saveState();
         render();
@@ -803,6 +995,9 @@
         objectiveMinutes: state.objectiveMinutes,
         initialTargetMinutes: state.initialTargetMinutes,
         baselineDailyCigs: state.baselineDailyCigs,
+        pricePerPack: state.pricePerPack,
+        cigsPerPack: state.cigsPerPack,
+        pausedDates: [],
         cigarettes: []
       };
       await saveState();
@@ -811,6 +1006,43 @@
     });
     document.getElementById('confirm-reset-no').addEventListener('click', closeSheet);
   }
+
+
+  // ---------- Contexte de la cigarette (optionnel) ----------
+  let situationTimeout = null;
+  let currentTaggingEntry = null;
+
+  (function populateSituationSelect(){
+    const sel = document.getElementById('situation-select');
+    SITUATIONS.forEach(s=>{
+      const opt = document.createElement('option');
+      opt.value = s.v; opt.textContent = s.l;
+      sel.appendChild(opt);
+    });
+  })();
+
+  function showSituationPicker(entry){
+    currentTaggingEntry = entry;
+    const picker = document.getElementById('situation-picker');
+    const sel = document.getElementById('situation-select');
+    sel.value = '';
+    picker.classList.add('show');
+    clearTimeout(situationTimeout);
+    situationTimeout = setTimeout(hideSituationPicker, 8000);
+  }
+  function hideSituationPicker(){
+    document.getElementById('situation-picker').classList.remove('show');
+    clearTimeout(situationTimeout);
+    currentTaggingEntry = null;
+  }
+  document.getElementById('situation-select').addEventListener('change', async (e)=>{
+    if(currentTaggingEntry){
+      currentTaggingEntry.situation = e.target.value || null;
+      await saveState();
+    }
+    hideSituationPicker();
+  });
+  document.getElementById('sp-close').addEventListener('click', hideSituationPicker);
 
   // ---------- Init ----------
   (async function init(){
