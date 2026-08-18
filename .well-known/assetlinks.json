@@ -1,0 +1,8 @@
+[{
+      "relation": ["delegate_permission/common.handle_all_urls"],
+      "target": {
+        "namespace": "android_app",
+        "package_name": "io.github.sinsitis_jerome.twa",
+        "sha256_cert_fingerprints": ["D9:78:5B:B2:54:16:26:61:12:D5:A4:08:B1:93:78:FC:13:9C:74:3A:C0:CC:2C:07:40:A1:4F:17:8C:81:3C:DF"]
+      }
+    }]
