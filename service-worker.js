@@ -1,4 +1,4 @@
-const CACHE_NAME = 'suivi-cig-v4';
+const CACHE_NAME = 'suivi-cig-v5';
 const ASSETS = ['./', './index.html', './manifest.json', './icon-192.png', './icon-512.png', './icon-192-maskable.png', './icon-512-maskable.png'];
 
 self.addEventListener('install', (event) => {
@@ -20,6 +20,8 @@ self.addEventListener('activate', (event) => {
 // Réseau en priorité : on va toujours chercher la dernière version en ligne.
 // Le cache ne sert que de repli si le téléphone est hors-ligne.
 self.addEventListener('fetch', (event) => {
+  if (event.request.method !== 'GET') return;
+
   event.respondWith(
     fetch(event.request)
       .then((response) => {
@@ -27,6 +29,18 @@ self.addEventListener('fetch', (event) => {
         caches.open(CACHE_NAME).then((cache) => cache.put(event.request, copy));
         return response;
       })
-      .catch(() => caches.match(event.request))
+      .catch(async () => {
+        const cached = await caches.match(event.request);
+        if (cached) return cached;
+        // Hors-ligne et jamais mis en cache : repli minimal plutôt qu'une erreur réseau brute.
+        if (event.request.mode === 'navigate') {
+          const fallback = await caches.match('./index.html');
+          if (fallback) return fallback;
+        }
+        return new Response('Hors ligne — cette ressource n\'a pas encore été mise en cache.', {
+          status: 503,
+          headers: { 'Content-Type': 'text/plain; charset=utf-8' }
+        });
+      })
   );
 });

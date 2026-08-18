@@ -6,6 +6,8 @@
   "start_url": "./index.html",
   "scope": "./",
   "display": "standalone",
+  "display_override": ["standalone", "minimal-ui", "browser"],
+  "launch_handler": { "client_mode": "focus-existing" },
   "background_color": "#14171A",
   "theme_color": "#14171A",
   "orientation": "portrait",
@@ -21,6 +23,7 @@
   "screenshots": [
     { "src": "screenshot-1.png", "sizes": "1080x2400", "type": "image/png", "form_factor": "narrow", "label": "Écran principal avec indicateur de délai" },
     { "src": "screenshot-2.png", "sizes": "1080x2400", "type": "image/png", "form_factor": "narrow", "label": "Statistiques détaillées et courbe de progression" },
-    { "src": "screenshot-3.png", "sizes": "1080x2400", "type": "image/png", "form_factor": "narrow", "label": "Paliers de bénéfices santé" }
+    { "src": "screenshot-3.png", "sizes": "1080x2400", "type": "image/png", "form_factor": "narrow", "label": "Paliers de bénéfices santé" },
+    { "src": "screenshot-wide.png", "sizes": "2400x1350", "type": "image/png", "form_factor": "wide", "label": "Aperçu de l'application" }
   ]
 }
