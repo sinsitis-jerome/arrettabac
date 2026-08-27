@@ -123,8 +123,8 @@
     border-top:1px solid var(--divider);
     border-bottom:1px solid var(--divider);
     min-height:0;
-    gap:8px;
-    padding:10px 16px;
+    gap:10px;
+    padding:16px 16px 18px;
   }
   #smoke-btn{
     width:min(24vw,108px); height:min(24vw,108px);
@@ -154,7 +154,7 @@
   @keyframes tapPulse{ 0%,100%{ transform:translateY(0); opacity:0.45; } 50%{ transform:translateY(2px); opacity:0.85; } }
   #last-info{ font-size:0.74rem; color:var(--text-muted); text-align:center; }
   #undo-link{ font-size:0.72rem; color:var(--text-faint); text-decoration:underline; padding:4px 8px; }
-  #rate-alert-box{ width:100%; max-width:340px; border-radius:12px; padding:10px 14px; text-align:center; font-size:0.82rem; line-height:1.4; }
+  #rate-alert-box{ width:100%; max-width:340px; border-radius:12px; padding:10px 14px; text-align:center; font-size:0.82rem; line-height:1.4; margin-top:2px; }
   #rate-alert-box.warning{ background:var(--amber-glow); color:var(--amber); }
   #rate-alert-box.bravo{ background:var(--green-glow); color:var(--green); font-weight:600; }
 
@@ -809,22 +809,41 @@ const I18N = {"fr": {"langName": "Français", "statusStart": "C'est parti", "sta
     // message d'alerte : rythme théorique du jour (24h / délai moyen du jour) vs. hier (ou consommation habituelle déclarée)
     const rateAlertBox = document.getElementById('rate-alert-box');
     const rateAlertText = document.getElementById('rate-alert-text');
-    const theoreticalToday = avgGapToday!==null ? 1440 / avgGapToday : null;
+    // il faut au moins 2 écarts DANS la journée pour que le rythme soit significatif — avec un seul écart,
+    // il s'agit presque toujours du grand écart de nuit entre la dernière cigarette d'hier et celle-ci,
+    // qui ne représente pas un vrai "rythme du jour".
+    // rythme théorique du jour pour l'alerte : uniquement les écarts STRICTEMENT entre deux cigarettes
+    // toutes deux enregistrées aujourd'hui (contrairement à "Délai moyen du jour" ci-dessus, on exclut ici
+    // le grand écart de nuit qui écraserait tout signal utile avec seulement 2-3 cigarettes dans la journée).
+    const todayCigsSorted = cigsOnDate(today);
+    const strictTodayGaps = [];
+    for(let i=1;i<todayCigsSorted.length;i++){
+      strictTodayGaps.push((todayCigsSorted[i]-todayCigsSorted[i-1])/MIN_MS);
+    }
+    const strictAvgGapToday = strictTodayGaps.length ? strictTodayGaps.reduce((a,b)=>a+b,0)/strictTodayGaps.length : null;
+    const theoreticalToday = (strictAvgGapToday!==null && strictTodayGaps.length>=1) ? 1440 / strictAvgGapToday : null;
     let comparisonValue = null;
     if(dayIndex > 1){
       const yesterdayISO = todayISO(dateOfDayIndex(state.startDate, dayIndex-1));
       const yesterdayGaps = gapsEndingOnDate(yesterdayISO);
-      const avgGapYesterday = yesterdayGaps.length ? yesterdayGaps.reduce((a,b)=>a+b,0)/yesterdayGaps.length : null;
+      // comme pour aujourd'hui : il faut au moins 2 écarts hier pour que la moyenne soit fiable.
+      // Avec 1 seul écart (2 cigarettes très espacées), la valeur peut être extrême et fausser
+      // toute la comparaison — mieux vaut alors retomber sur la consommation habituelle déclarée.
+      const avgGapYesterday = yesterdayGaps.length>=2 ? yesterdayGaps.reduce((a,b)=>a+b,0)/yesterdayGaps.length : null;
       comparisonValue = avgGapYesterday!==null ? 1440/avgGapYesterday : null;
     }
     if(comparisonValue===null) comparisonValue = state.baselineDailyCigs || null;
 
     if(theoreticalToday!==null && comparisonValue!==null && theoreticalToday !== comparisonValue){
       if(theoreticalToday > comparisonValue){
-        const count = todayGapsForAvg.length;
-        const sum = todayGapsForAvg.reduce((a,b)=>a+b,0);
-        const requiredTotalGap = (1440/comparisonValue) * (count+1) - sum;
-        const remainingMin = Math.max(0, Math.ceil(requiredTotalGap - (elapsedMin || 0)));
+        // objectif réaliste : que le PROCHAIN écart, à lui seul, atteigne le rythme cible —
+        // plutôt que d'essayer de rattraper toute la moyenne de la journée en un seul délai
+        // (ce qui explosait après une série de cigarettes rapprochées).
+        // Plafonné à 24h : avec très peu de données, un écart "hier" anormalement long peut
+        // fausser le calcul ; au-delà d'un jour, l'indication n'est de toute façon plus utile.
+        const MAX_SUGGESTED_WAIT_MIN = 1440;
+        const targetGapMin = Math.min(1440 / comparisonValue, MAX_SUGGESTED_WAIT_MIN);
+        const remainingMin = Math.max(0, Math.ceil(targetGapMin - (elapsedMin || 0)));
         rateAlertText.textContent = t('rateAlertWarningTemplate').replace('{x}', fmtMinutes(remainingMin));
         rateAlertBox.className = 'warning';
         rateAlertBox.style.display = 'block';
