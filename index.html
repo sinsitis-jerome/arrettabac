@@ -877,7 +877,7 @@ const I18N = {"fr": {"langName": "Français", "statusStart": "C'est parti", "sta
       coPctBig.textContent = pctCo.toFixed(1)+'%';
       coPctBig.style.color = colorForPct(pctCo);
       coPctCaption.textContent = t('coPctCaption');
-      document.getElementById('co-skull').style.display = pctCo > 50 ? 'inline-block' : 'none';
+      document.getElementById('co-skull').style.display = pctCo > 85 ? 'inline-block' : 'none';
     } else {
       nicotinePctBig.textContent = '';
       nicotinePctBig.style.color = '';
@@ -1258,32 +1258,47 @@ const I18N = {"fr": {"langName": "Français", "statusStart": "C'est parti", "sta
     const chartCounts = counts.slice(0, -1);
     const chartAvailable = chartCounts.length > 0;
 
-    // indice de dépendance, jour par jour : 100% = rythme du premier délai "effectif" RÉELLEMENT mesuré
-    // (à partir du Jour 2, le Jour 1 étant exclu car souvent partiel), 0% = 24h sans cigarette.
-    // Le délai "effectif" mélange 70% délai moyen du jour + 30% délai le plus court du jour, pour
-    // qu'une salve ponctuelle de cigarettes rapprochées pèse dans le score même si la moyenne du
-    // jour reste correcte par ailleurs (même logique que le mécanisme rouge/orange/vert de l'app,
-    // basé sur l'écart le plus court plutôt que la moyenne).
+    // indice de dépendance, jour par jour : 100% = rythme moyen des 5 premiers jours "effectifs"
+    // RÉELLEMENT mesurés (à partir du Jour 2, le Jour 1 étant exclu car souvent partiel), 0% = 24h
+    // sans cigarette. Le délai "effectif" mélange 70% délai moyen du jour + 30% délai le plus court
+    // du jour, pour qu'une salve ponctuelle de cigarettes rapprochées pèse dans le score même si la
+    // moyenne du jour reste correcte par ailleurs (même logique que le mécanisme rouge/orange/vert
+    // de l'app, basé sur l'écart le plus court plutôt que la moyenne).
+    // La référence est moyennée sur plusieurs jours (pas un seul) et la courbe finale est lissée par
+    // une moyenne glissante sur 3 jours, pour éviter qu'un jour isolé et peu représentatif ne fasse
+    // sauter toute l'échelle ou la courbe de façon peu réaliste.
     const MINGAP_WEIGHT = 0.3;
+    const REFERENCE_DAYS_COUNT = 5;   // nombre de jours mesurables utilisés pour établir la référence 100%
+    const SMOOTHING_WINDOW = 3;       // fenêtre de la moyenne glissante appliquée à la courbe finale
     function effectiveGapForDay(gaps){
       const avgGap = gaps.reduce((a,b)=>a+b,0)/gaps.length;
       const minGap = Math.min(...gaps);
       return (1-MINGAP_WEIGHT)*avgGap + MINGAP_WEIGHT*minGap;
     }
-    let referenceEffectiveGap = null;
-    for(let d=2; d<=chartCounts.length; d++){
+    const referenceEffectiveGaps = [];
+    for(let d=2; d<=chartCounts.length && referenceEffectiveGaps.length<REFERENCE_DAYS_COUNT; d++){
       const g = gapsEndingOnDate(dateOfDayIndex(state.startDate, d));
-      if(g.length){ referenceEffectiveGap = effectiveGapForDay(g); break; }
+      if(g.length) referenceEffectiveGaps.push(effectiveGapForDay(g));
     }
+    const referenceEffectiveGap = referenceEffectiveGaps.length
+      ? referenceEffectiveGaps.reduce((a,b)=>a+b,0)/referenceEffectiveGaps.length
+      : null;
     const theoreticalMaxIndex = referenceEffectiveGap ? 1440/referenceEffectiveGap : null;
-    const dependencyIndexDaily = [];
+    const dependencyIndexRaw = [];
     for(let d=1; d<=chartCounts.length; d++){
-      if(d===1 || theoreticalMaxIndex===null){ dependencyIndexDaily.push(null); continue; }
+      if(d===1 || theoreticalMaxIndex===null){ dependencyIndexRaw.push(null); continue; }
       const gapsForDay = gapsEndingOnDate(dateOfDayIndex(state.startDate, d));
-      if(!gapsForDay.length){ dependencyIndexDaily.push(null); continue; }
+      if(!gapsForDay.length){ dependencyIndexRaw.push(null); continue; }
       const theoreticalForDay = 1440/effectiveGapForDay(gapsForDay);
-      dependencyIndexDaily.push(Math.min(100, Math.max(0, (theoreticalForDay/theoreticalMaxIndex)*100)));
+      dependencyIndexRaw.push(Math.min(100, Math.max(0, (theoreticalForDay/theoreticalMaxIndex)*100)));
     }
+    // lissage : moyenne glissante sur les valeurs non-nulles disponibles dans la fenêtre
+    const dependencyIndexDaily = dependencyIndexRaw.map((v, i) => {
+      if(v===null) return null;
+      const windowStart = Math.max(0, i-SMOOTHING_WINDOW+1);
+      const windowVals = dependencyIndexRaw.slice(windowStart, i+1).filter(x=>x!==null);
+      return windowVals.reduce((a,b)=>a+b,0)/windowVals.length;
+    });
 
     const buckets = aggregateCounts(chartCounts, mode);
     const n = buckets.length;
